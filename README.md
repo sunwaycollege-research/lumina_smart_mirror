@@ -33,20 +33,27 @@ cd lumina
 
 👥 Core Team & Mentors
 Engineering Team
+
 Utkirsta Adhikari — Hardware & Team Lead
+
 
 Sulav Nepal — AI Software Engineer
 
+
 Prince KC — UI/UX Designer
 
+
 Nishant Kumar Kharga — Integration Engineer
+
 
 Anusha Ghimire — Systems QA & Testing
 
 Mentors
 Mr. Ayush Dangol — HCI & Embedded Systems Specialist
 
+
 Mr. Raj Kumar Chaurasiya — Computer Vision & Edge AI Expert
+
 
 📄 Recognition
 Developed for the SUNWAY RAIN Innovation Summit.
