@@ -83,6 +83,25 @@ let config = {
 			config: {
 				updateInterval: 2000
 			}
+		},
+		// --- GESTURE CONTROL ---
+		{
+			module: "custom/MMM-GestureController",
+			config: {
+				gestureFile: "/tmp/gesture.json",
+				pollInterval: 1000,
+				staleThresholdSeconds: 5,
+			}
+		},
+		// --- VOICE RECOGNITION ---
+		{
+			module: "custom/MMM-VoiceBridge",
+			position: "top_right",
+			config: {
+				voiceFile: "/tmp/voice.json",
+				pollInterval: 1000,
+				staleThresholdSeconds: 5,
+			}
 		}
 	]
 };

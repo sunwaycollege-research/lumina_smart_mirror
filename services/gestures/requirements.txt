@@ -1,0 +1,10 @@
+# Requirements for the gesture recognition subsystem
+# These packages are used for camera capture, landmark extraction, and classification.
+# Pin versions as needed when implementing and testing.
+#
+# Note: mediapipe 0.10+ uses the tasks API for hand landmark detection.
+# The HandLandmarker model is downloaded automatically on first use.
+mediapipe>=0.10.0
+opencv-python>=4.5.5
+numpy>=1.21
+scikit-learn>=1.0
