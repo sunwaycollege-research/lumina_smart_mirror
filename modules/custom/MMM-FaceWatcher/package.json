@@ -1,0 +1,9 @@
+{
+  "name": "MMM-FaceWatcher",
+  "version": "1.0.0",
+  "description": "MagicMirror² module that displays custom greetings based on active face recognition profile data.",
+  "main": "node_helper.js",
+  "author": "Lumina Smart Mirror Dev",
+  "license": "MIT",
+  "dependencies": {}
+}
