@@ -2,7 +2,8 @@ Module.register("healthdashboard", {
 	defaults: {
 		updateInterval: 100,
 		cameraWidth: 320,
-		cameraHeight: 240
+		cameraHeight: 240,
+		maxSignalLength: 300
 	},
 
 	heartRate: null,
@@ -10,9 +11,12 @@ Module.register("healthdashboard", {
 	mood: null,
 	hrv: null,
 	ppgSignal: [],
+	filteredSignal: [],
+	peaks: [],
 	isProcessing: false,
 	cameraActive: false,
 	cameraStream: null,
+	restartTimeout: null,
 
 	getStyles: function () {
 		return ["/css/healthdashboard.css", "/css/font-awesome.css"];
@@ -24,14 +28,17 @@ Module.register("healthdashboard", {
 	},
 
 	getDom: function () {
-		var self = this;
 		var wrapper = document.createElement("div");
 		wrapper.id = "health-dashboard";
 		wrapper.className = "health-dashboard";
 
 		wrapper.innerHTML =
 			'<div class="hd-header">' +
+				'<span class="hd-live"><span class="hd-live-dot"></span>LIVE</span>' +
 				'<span class="hd-title">Health Monitor</span>' +
+			"</div>" +
+			'<div class="hd-waveform">' +
+				'<canvas id="hd-ppg-canvas" width="220" height="50"></canvas>' +
 			"</div>" +
 			'<div class="hd-metrics">' +
 				'<div class="hd-card">' +
@@ -75,6 +82,7 @@ Module.register("healthdashboard", {
 				video: {
 					width: this.config.cameraWidth,
 					height: this.config.cameraHeight,
+					frameRate: { ideal: 30 },
 					facingMode: "user"
 				}
 			};
@@ -85,7 +93,8 @@ Module.register("healthdashboard", {
 			this.videoElement.width = this.config.cameraWidth;
 			this.videoElement.height = this.config.cameraHeight;
 			this.videoElement.setAttribute("playsinline", "");
-			this.videoElement.play();
+			this.videoElement.muted = true;
+			await this.videoElement.play();
 
 			this.canvasElement = document.createElement("canvas");
 			this.canvasElement.width = this.config.cameraWidth;
@@ -96,10 +105,28 @@ Module.register("healthdashboard", {
 			this.updateStatus("Analyzing...");
 			this.isProcessing = true;
 			this.ppgSignal = [];
+			this.filteredSignal = [];
+			this.peaks = [];
 			this.processingLoop();
 		} catch (err) {
 			Log.error("Camera error:", err);
 			this.updateStatus("Camera unavailable - " + err.message);
+			if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+				this.updateStatus("Camera permission denied");
+			}
+		}
+	},
+
+	stopCamera: function () {
+		this.isProcessing = false;
+		this.cameraActive = false;
+		if (this.restartTimeout) {
+			clearTimeout(this.restartTimeout);
+			this.restartTimeout = null;
+		}
+		if (this.cameraStream) {
+			this.cameraStream.getTracks().forEach(function (t) { t.stop(); });
+			this.cameraStream = null;
 		}
 	},
 
@@ -107,30 +134,85 @@ Module.register("healthdashboard", {
 		var self = this;
 		if (!this.isProcessing) return;
 
-		this.ctx.drawImage(this.videoElement, 0, 0);
-		var frameData = this.ctx.getImageData(0, 0, this.config.cameraWidth, this.config.cameraHeight);
+		try {
+			this.ctx.drawImage(this.videoElement, 0, 0);
+			var frameData = this.ctx.getImageData(0, 0, this.config.cameraWidth, this.config.cameraHeight);
 
-		var signal = this.extractPPGSignal(frameData);
-		this.ppgSignal.push(signal);
+			var signal = this.extractPPGSignal(frameData);
+			this.ppgSignal.push(signal);
 
-		if (this.ppgSignal.length > 300) {
-			this.ppgSignal.shift();
-		}
-
-		if (this.ppgSignal.length >= 50) {
-			var result = this.processHeartRate(this.ppgSignal);
-			if (result && result.hr > 40 && result.hr < 220) {
-				this.heartRate = Math.round(result.hr);
-				this.hrv = Math.round(result.hrv);
-				this.stressLevel = this.estimateStress(this.heartRate, this.hrv);
-				this.mood = this.estimateMood(this.heartRate, this.hrv);
-				this.updateDisplay();
+			if (this.ppgSignal.length > this.config.maxSignalLength) {
+				this.ppgSignal.shift();
 			}
+
+			if (this.ppgSignal.length >= 50) {
+				var result = this.processHeartRate(this.ppgSignal);
+				this.drawWaveform();
+				if (result && result.hr > 40 && result.hr < 220) {
+					this.heartRate = Math.round(result.hr);
+					this.hrv = Math.round(result.hrv);
+					this.stressLevel = this.estimateStress(this.heartRate, this.hrv);
+					this.mood = this.estimateMood(this.heartRate, this.hrv);
+					this.updateDisplay();
+				}
+			} else {
+				this.drawWaveform();
+			}
+		} catch (e) {
+			Log.error("Processing error:", e);
 		}
 
-		setTimeout(function () {
+		this.restartTimeout = setTimeout(function () {
 			self.processingLoop();
 		}, this.config.updateInterval);
+	},
+
+	drawWaveform: function () {
+		var canvas = document.getElementById("hd-ppg-canvas");
+		if (!canvas) return;
+		var ctx = canvas.getContext("2d");
+		var w = canvas.width, h = canvas.height;
+		var data = this.filteredSignal.length > 10 ? this.filteredSignal : this.ppgSignal;
+		var len = data.length;
+		if (len < 2) {
+			ctx.clearRect(0, 0, w, h);
+			return;
+		}
+
+		var min = Infinity, max = -Infinity;
+		for (var i = 0; i < len; i++) {
+			if (data[i] < min) min = data[i];
+			if (data[i] > max) max = data[i];
+		}
+		var range = max - min || 1;
+
+		ctx.clearRect(0, 0, w, h);
+
+		ctx.beginPath();
+		ctx.strokeStyle = "#51cf66";
+		ctx.lineWidth = 1.5;
+
+		for (var i = 0; i < len; i++) {
+			var x = (i / len) * w;
+			var y = ((data[i] - min) / range) * (h - 4) + 2;
+			if (i === 0) ctx.moveTo(x, h - y);
+			else ctx.lineTo(x, h - y);
+		}
+		ctx.stroke();
+
+		if (this.peaks.length > 0) {
+			ctx.fillStyle = "rgba(255, 107, 107, 0.6)";
+			for (var i = 0; i < this.peaks.length; i++) {
+				var peakIdx = this.peaks[i];
+				if (peakIdx >= 0 && peakIdx < len) {
+					var px = (peakIdx / len) * w;
+					var py = ((data[peakIdx] - min) / range) * (h - 4) + 2;
+					ctx.beginPath();
+					ctx.arc(px, h - py, 3, 0, Math.PI * 2);
+					ctx.fill();
+				}
+			}
+		}
 	},
 
 	extractPPGSignal: function (imageData) {
@@ -141,8 +223,7 @@ Module.register("healthdashboard", {
 		var roiW = Math.round(w * 0.4);
 		var roiH = Math.round(h * 0.5);
 
-		var g = 0;
-		var count = 0;
+		var g = 0, count = 0;
 		var data = imageData.data;
 
 		for (var y = roiY; y < roiY + roiH; y++) {
@@ -174,6 +255,7 @@ Module.register("healthdashboard", {
 			for (var j = start; j <= end; j++) { sum += detrended[j]; cnt++; }
 			filtered.push(sum / cnt);
 		}
+		this.filteredSignal = filtered;
 
 		var maxVal = 0;
 		for (var i = 0; i < n; i++) {
@@ -194,6 +276,7 @@ Module.register("healthdashboard", {
 				peaks.push(i);
 			}
 		}
+		this.peaks = peaks;
 
 		if (peaks.length < 3) return null;
 
@@ -266,15 +349,11 @@ Module.register("healthdashboard", {
 	},
 
 	suspend: function () {
-		this.isProcessing = false;
-		if (this.cameraStream) {
-			this.cameraStream.getTracks().forEach(function (t) { t.stop(); });
-			this.cameraStream = null;
-		}
+		this.stopCamera();
 	},
 
 	resume: function () {
-		if (!this.cameraStream) {
+		if (!this.cameraActive) {
 			this.startCamera();
 		}
 	}
