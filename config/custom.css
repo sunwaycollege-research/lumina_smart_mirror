@@ -1,0 +1,234 @@
+/**
+ * LUMINA SMART MIRROR - PREMIUM HIGH-CONTRAST CYBERBLUEPRINT
+ * Matte luxury typography, deep visibility glass balance, zero harsh lines.
+ */
+
+/* ==========================================================================
+   1. GLOBAL RESET & BASE GLASS ENVIRONMENT
+   ========================================================================== */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-weight: 300;
+    line-height: 1.6;
+    letter-spacing: 0.05em;
+    color: #bbb;
+    background: #000;
+
+    /* NOTE: Do NOT override margin or padding here.
+       MM's main.css uses margin: 60px on body as the safe-zone for all
+       absolute-positioned regions. Removing it breaks top-right / bottom-left
+       region placement and clips content at the screen edges. */
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Typography Polish for Headers */
+header,
+.module-header {
+    color: #fff !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    letter-spacing: 0.25em !important;
+    text-transform: uppercase !important;
+    border-bottom: none !important;
+
+    /* Erases harsh terminal lines */
+    padding-bottom: 0 !important;
+    margin-bottom: 18px !important;
+}
+
+/* Global Fallbacks for Secondary Elements */
+.dimmed,
+.light,
+.text-muted {
+    color: #888 !important;
+
+    /* Rescued from pitch-black #444444 */
+}
+
+/* ==========================================================================
+   2. CLOCK & CHRONO SYSTEM OVERRIDES
+   ========================================================================== */
+.clock .date {
+    font-size: 14px !important;
+    letter-spacing: 0.18em !important;
+    text-transform: uppercase;
+    color: #aaa !important;
+
+    /* Softer contrast than the time, but crisp */
+}
+
+.clock .time {
+    font-size: 64px !important;
+
+    /* Slightly enlarged for scale balance */
+    font-weight: 100 !important;
+    letter-spacing: -0.03em !important;
+    color: #fff !important;
+    margin-top: 4px;
+}
+
+/* ==========================================================================
+   3. SOMA DIGITAL INTELLIGENCE MATRIX (TOP RIGHT)
+   ========================================================================== */
+
+.soma-container,
+#soma-schedule-sync ul {
+    list-style: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    text-align: right !important;
+}
+
+.soma-container .metric-tracker {
+    font-size: 11px !important;
+    letter-spacing: 0.15em !important;
+    text-transform: uppercase;
+    color: #666 !important;
+}
+
+.soma-container h3,
+.soma-container .section-title {
+    font-size: 12px !important;
+    font-weight: 500;
+    letter-spacing: 0.15em !important;
+    text-transform: uppercase;
+    color: #fff !important;
+    margin-top: 28px !important;
+    margin-bottom: 10px !important;
+}
+
+.soma-container li {
+    font-size: 14px !important;
+    color: #e5e5e5 !important;
+    font-weight: 300;
+    margin-bottom: 8px;
+}
+
+#soma-schedule-sync li {
+    list-style: none !important;
+    padding: 0 !important;
+    margin: 0 0 8px !important;
+    text-align: right !important;
+}
+
+/* ==========================================================================
+   4. REGION ABSOLUTE-POSITION ANCHOR CORRECTIONS
+   MagicMirror regions use position: absolute.
+   MM's main.css sets `.region.bottom.left { bottom: 100% }` which pushes
+   the region's bottom edge to the TOP of its parent, landing it visually
+   in the center of the screen. Override to bottom: 0 to pin it correctly.
+   ========================================================================== */
+
+/* Keep clock pinned to the physical top-left corner */
+.region.top.left {
+    top: 0 !important;
+    left: 0 !important;
+}
+
+/* FIX: Pin weather to the physical bottom-left corner.
+   Overrides MM's erroneous `bottom: 100%` that drifts content to center. */
+.region.bottom.left {
+    bottom: 0 !important;
+    left: 0 !important;
+}
+
+/* Keep SOMA pinned to the physical top-right corner */
+.region.top.right {
+    top: 0 !important;
+    right: 0 !important;
+}
+
+/* ==========================================================================
+   5. METEO WEATHER UI MINIMALIST PACK
+   ========================================================================== */
+.weather .current-conditions {
+    font-size: 46px !important;
+    font-weight: 200 !important;
+    color: #fff !important;
+    line-height: 1.1;
+}
+
+.weather .weather-forecast td {
+    /* padding: 6px 16px !important; */
+    font-size: 14px !important;
+}
+
+.weather .weather-forecast .day {
+    color: #999 !important;
+    text-transform: uppercase;
+    font-size: 11px !important;
+    letter-spacing: 0.12em;
+}
+
+.weather .weather-forecast .max-temp {
+    color: #fff !important;
+    font-weight: 500;
+}
+
+.weather .weather-forecast .min-temp {
+    color: #777 !important;
+}
+
+/* ==========================================================================
+   5. CUSTOM TICKER COMPONENT LAYER (BOTTOM BAR)
+   ========================================================================== */
+.region.bottom.bar {
+    border-top: 1px solid rgb(255 255 255 / 8%) !important;
+
+    /* Micro-fine separator mask */
+    padding-top: 24px !important;
+    width: 100% !important;
+    display: flex;
+    justify-content: center;
+}
+
+.newsfeed {
+    text-align: center !important;
+    width: 100%;
+}
+
+.newsfeed .newsfeed-source {
+    font-size: 11px !important;
+    letter-spacing: 0.25em !important;
+    text-transform: uppercase !important;
+    color: #888 !important;
+
+    /* High-grade accent silver */
+    margin-bottom: 6px;
+}
+
+.newsfeed .newsfeed-title {
+    font-size: 18px !important;
+
+    /* Increased for premium cinematic impact */
+    font-weight: 300 !important;
+    letter-spacing: 0.03em !important;
+    color: #fff !important;
+
+    /* Full white so text cuts cleanly through glass */
+    max-width: 85%;
+    margin: 0 auto;
+    line-height: 1.4;
+}
+
+/* Neon Alert System Warning Injection */
+.newsfeed div[style*="color: rgb(255, 85, 85)"] {
+    color: #f44 !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.08em !important;
+    animation: pulse-error 2s infinite ease-in-out;
+}
+
+@keyframes pulse-error {
+    0% {
+        opacity: 0.6;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0.6;
+    }
+}
