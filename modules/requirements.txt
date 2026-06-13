@@ -1,0 +1,18 @@
+# FILE: lumina-premium/requirements.txt
+# Install with: pip install -r requirements.txt --break-system-packages
+
+# ── Face Recognition ──────────────────────────────────────
+opencv-python>=4.9.0
+face-recognition>=1.3.0
+dlib>=19.24.0
+numpy>=1.26.0
+
+# ── Gesture Control ───────────────────────────────────────
+mediapipe>=0.10.9
+
+# ── Health Monitor (rPPG) ─────────────────────────────────
+scipy>=1.12.0
+
+# ── Voice Control ─────────────────────────────────────────
+vosk>=0.3.45
+sounddevice>=0.4.6
