@@ -1,5 +1,5 @@
 let config = {
-	address: "localhost",
+	address: "0.0.0.0",
 	port: 8080,
 	basePath: "/",
 	ipWhitelist: ["127.0.0.1", "::ffff:127.0.0.1", "::1"],
@@ -65,6 +65,16 @@ let config = {
 		{
 			module: "mmm-kchakhabar",
 			position: "bottom_bar"
+		},
+		// --- RIGHT-CENTER: rPPG Health Monitor ---
+		{
+			module: "healthdashboard",
+			position: "bottom_bar",
+			config: {
+				updateInterval: 100,
+				cameraWidth: 320,
+				cameraHeight: 240
+			}
 		}
 	]
 };

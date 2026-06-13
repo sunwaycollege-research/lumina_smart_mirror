@@ -1,0 +1,97 @@
+.health-dashboard {
+	position: fixed;
+	right: 15px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 240px;
+	background: rgba(0, 0, 0, 0.75);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 10px;
+	padding: 15px;
+	z-index: 9999;
+	pointer-events: auto;
+}
+
+.hd-header {
+	text-align: center;
+	padding-bottom: 10px;
+	margin-bottom: 10px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hd-title {
+	font-size: 13px;
+	font-weight: 400;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: var(--color-text-bright, #fff);
+}
+
+.hd-metrics {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.hd-card {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 10px;
+	background: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(255, 255, 255, 0.06);
+	border-radius: 6px;
+}
+
+.hd-card-icon {
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 15px;
+	flex-shrink: 0;
+}
+
+.hd-card .fa-heartbeat { color: #ff6b6b; }
+.hd-card .fa-tachometer { color: #ffd93d; }
+.hd-card .fa-smile-o { color: #6bcbff; }
+.hd-card .fa-area-chart { color: #a29bfe; }
+
+.hd-card-body {
+	flex: 1;
+	min-width: 0;
+}
+
+.hd-card-value {
+	font-size: 20px;
+	font-weight: 300;
+	color: var(--color-text-bright, #fff);
+	line-height: 1.2;
+}
+
+.hd-card-value.stress-low { color: #51cf66; }
+.hd-card-value.stress-moderate { color: #ffd93d; }
+.hd-card-value.stress-high { color: #ff6b6b; }
+
+.hd-card-label {
+	font-size: 10px;
+	color: var(--color-text-dimmed, #666);
+	text-transform: uppercase;
+	letter-spacing: 1px;
+}
+
+.hd-unit {
+	color: var(--color-text-dimmed, #666);
+	font-weight: 400;
+}
+
+.hd-status {
+	text-align: center;
+	font-size: 10px;
+	color: var(--color-text-dimmed, #666);
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid rgba(255, 255, 255, 0.06);
+	letter-spacing: 1px;
+}
