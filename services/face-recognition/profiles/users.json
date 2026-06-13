@@ -1,0 +1,14 @@
+{
+    "Utkrista": {
+        "name": "Utkrista",
+        "theme": "dark",
+        "role": "Student",
+        "welcomeMessage": "Welcome back Utkrista"
+    },
+    "Sulav": {
+        "name": "Dawgybey",
+        "theme": "dark",
+        "role": "Student",
+        "welcomeMessage": "Sup son"
+    }
+}

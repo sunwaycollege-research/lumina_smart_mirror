@@ -1,6 +1,6 @@
 let config = {
 	address: "0.0.0.0",
-	port: 8080,
+	port: 8082,
 	basePath: "/",
 	ipWhitelist: ["127.0.0.1", "::ffff:127.0.0.1", "::1"],
 	useHttps: false,
@@ -75,8 +75,16 @@ let config = {
 				cameraWidth: 320,
 				cameraHeight: 240
 			}
+		},
+		// --- USER INTELLIGENCE: FACE WATCHER PROFILE INTEGRATION ---
+		{
+			module: "custom/MMM-FaceWatcher",
+			position: "top_left",
+			config: {
+				updateInterval: 2000
+			}
 		}
 	]
 };
 
-if (typeof module !== "undefined") { module.exports = config; }
+if (typeof module !== "undefined") { module.exports = config; }
