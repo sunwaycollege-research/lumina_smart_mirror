@@ -219,7 +219,7 @@ class FaceService:
 
 if __name__ == "__main__":
     # Standard service configuration
-    service = FaceService(camera_index=1, update_interval=2.0, max_misses=3, tolerance=0.4, required_streak=3)
+    service = FaceService(camera_index=0, update_interval=2.0, max_misses=3, tolerance=0.4, required_streak=3)
     # Ensure any stale JSON is cleared before starting the service loop
     service._write_unknown_state()
     service.run()
