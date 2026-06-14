@@ -1,55 +1,101 @@
 .health-dashboard {
 	position: fixed;
 	right: 15px;
-	top: 50%;
-	transform: translateY(-50%);
+	bottom: 15px;
 	width: 240px;
 	background: rgba(0, 0, 0, 0.75);
 	border: 1px solid rgba(255, 255, 255, 0.1);
 	border-radius: 10px;
-	padding: 15px;
+	padding: 12px;
 	z-index: 9999;
 	pointer-events: auto;
 }
 
 .hd-header {
-	text-align: center;
-	padding-bottom: 10px;
-	margin-bottom: 10px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding-bottom: 8px;
+	margin-bottom: 8px;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .hd-title {
-	font-size: 13px;
+	font-size: 12px;
 	font-weight: 400;
-	letter-spacing: 2px;
+	letter-spacing: 1.5px;
 	text-transform: uppercase;
 	color: var(--color-text-bright, #fff);
+}
+
+.hd-live {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 9px;
+	font-weight: 700;
+	letter-spacing: 1px;
+	color: #51cf66;
+	text-transform: uppercase;
+	animation: hd-pulse 2s ease-in-out infinite;
+}
+
+.hd-live-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: #51cf66;
+	animation: hd-blink 1s ease-in-out infinite;
+}
+
+@keyframes hd-blink {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.2; }
+}
+
+@keyframes hd-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.7; }
+}
+
+.hd-waveform {
+	margin-bottom: 8px;
+	background: rgba(0, 0, 0, 0.3);
+	border: 1px solid rgba(255, 255, 255, 0.06);
+	border-radius: 4px;
+	padding: 2px;
+}
+
+.hd-waveform canvas {
+	display: block;
+	width: 100%;
+	height: 50px;
 }
 
 .hd-metrics {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 5px;
 }
 
 .hd-card {
 	display: flex;
 	align-items: center;
-	gap: 10px;
-	padding: 8px 10px;
+	gap: 8px;
+	padding: 6px 8px;
 	background: rgba(255, 255, 255, 0.04);
 	border: 1px solid rgba(255, 255, 255, 0.06);
-	border-radius: 6px;
+	border-radius: 5px;
+	transition: background 0.2s;
 }
 
 .hd-card-icon {
-	width: 32px;
-	height: 32px;
+	width: 28px;
+	height: 28px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 15px;
+	font-size: 13px;
 	flex-shrink: 0;
 }
 
@@ -64,10 +110,11 @@
 }
 
 .hd-card-value {
-	font-size: 20px;
+	font-size: 18px;
 	font-weight: 300;
 	color: var(--color-text-bright, #fff);
 	line-height: 1.2;
+	transition: color 0.3s;
 }
 
 .hd-card-value.stress-low { color: #51cf66; }
@@ -75,7 +122,7 @@
 .hd-card-value.stress-high { color: #ff6b6b; }
 
 .hd-card-label {
-	font-size: 10px;
+	font-size: 9px;
 	color: var(--color-text-dimmed, #666);
 	text-transform: uppercase;
 	letter-spacing: 1px;
@@ -88,10 +135,10 @@
 
 .hd-status {
 	text-align: center;
-	font-size: 10px;
+	font-size: 9px;
 	color: var(--color-text-dimmed, #666);
 	margin-top: 8px;
-	padding-top: 8px;
+	padding-top: 6px;
 	border-top: 1px solid rgba(255, 255, 255, 0.06);
 	letter-spacing: 1px;
 }
