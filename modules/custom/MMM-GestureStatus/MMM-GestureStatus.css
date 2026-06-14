@@ -1,0 +1,33 @@
+.gesture-status-wrapper {
+    width: 280px;
+    background-color: rgba(20, 20, 20, 0.7);
+    border-radius: 12px;
+    padding: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(5px);
+    margin-top: 40px; /* Offset to push it below the clock */
+    text-align: center;
+}
+
+.gesture-status-header {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #888;
+    margin-bottom: 10px;
+    font-weight: 500;
+}
+
+.gesture-status-content {
+    font-size: 18px;
+    color: #aaa;
+    font-weight: 300;
+    transition: color 0.3s ease;
+}
+
+.gesture-status-content.active {
+    color: #fff;
+    font-weight: 500;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}

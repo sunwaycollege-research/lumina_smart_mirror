@@ -71,34 +71,18 @@ Module.register("healthdashboard", {
 	startCamera: async function () {
 		var self = this;
 		try {
-			var constraints = {
-				video: {
-					width: this.config.cameraWidth,
-					height: this.config.cameraHeight,
-					facingMode: "user"
-				}
-			};
-			this.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-			this.videoElement = document.createElement("video");
-			this.videoElement.srcObject = this.cameraStream;
-			this.videoElement.width = this.config.cameraWidth;
-			this.videoElement.height = this.config.cameraHeight;
-			this.videoElement.setAttribute("playsinline", "");
-			this.videoElement.play();
-
 			this.canvasElement = document.createElement("canvas");
 			this.canvasElement.width = this.config.cameraWidth;
 			this.canvasElement.height = this.config.cameraHeight;
 			this.ctx = this.canvasElement.getContext("2d");
 
 			this.cameraActive = true;
-			this.updateStatus("Analyzing...");
+			this.updateStatus("Connecting to camera...");
 			this.isProcessing = true;
 			this.ppgSignal = [];
 			this.processingLoop();
 		} catch (err) {
-			Log.error("Camera error:", err);
+			Log.error("Camera setup error:", err);
 			this.updateStatus("Camera unavailable - " + err.message);
 		}
 	},
@@ -107,30 +91,46 @@ Module.register("healthdashboard", {
 		var self = this;
 		if (!this.isProcessing) return;
 
-		this.ctx.drawImage(this.videoElement, 0, 0);
-		var frameData = this.ctx.getImageData(0, 0, this.config.cameraWidth, this.config.cameraHeight);
+		fetch("http://127.0.0.1:5001/frame")
+			.then(function (response) {
+				if (!response.ok) throw new Error("Frame not ready");
+				return response.blob();
+			})
+			.then(function (blob) {
+				return createImageBitmap(blob);
+			})
+			.then(function (bitmap) {
+				self.ctx.drawImage(bitmap, 0, 0, self.config.cameraWidth, self.config.cameraHeight);
+				var frameData = self.ctx.getImageData(0, 0, self.config.cameraWidth, self.config.cameraHeight);
 
-		var signal = this.extractPPGSignal(frameData);
-		this.ppgSignal.push(signal);
+				var signal = self.extractPPGSignal(frameData);
+				self.ppgSignal.push(signal);
 
-		if (this.ppgSignal.length > 300) {
-			this.ppgSignal.shift();
-		}
+				if (self.ppgSignal.length > 300) {
+					self.ppgSignal.shift();
+				}
 
-		if (this.ppgSignal.length >= 50) {
-			var result = this.processHeartRate(this.ppgSignal);
-			if (result && result.hr > 40 && result.hr < 220) {
-				this.heartRate = Math.round(result.hr);
-				this.hrv = Math.round(result.hrv);
-				this.stressLevel = this.estimateStress(this.heartRate, this.hrv);
-				this.mood = this.estimateMood(this.heartRate, this.hrv);
-				this.updateDisplay();
-			}
-		}
+				if (self.ppgSignal.length >= 50) {
+					var result = self.processHeartRate(self.ppgSignal);
+					if (result && result.hr > 40 && result.hr < 220) {
+						self.heartRate = Math.round(result.hr);
+						self.hrv = Math.round(result.hrv);
+						self.stressLevel = self.estimateStress(self.heartRate, self.hrv);
+						self.mood = self.estimateMood(self.heartRate, self.hrv);
+						self.updateDisplay();
+					}
+				}
 
-		setTimeout(function () {
-			self.processingLoop();
-		}, this.config.updateInterval);
+				self.updateStatus("Analyzing...");
+			})
+			.catch(function () {
+				self.updateStatus("Waiting for camera feed...");
+			})
+			.finally(function () {
+				setTimeout(function () {
+					self.processingLoop();
+				}, self.config.updateInterval);
+			});
 	},
 
 	extractPPGSignal: function (imageData) {
@@ -267,14 +267,10 @@ Module.register("healthdashboard", {
 
 	suspend: function () {
 		this.isProcessing = false;
-		if (this.cameraStream) {
-			this.cameraStream.getTracks().forEach(function (t) { t.stop(); });
-			this.cameraStream = null;
-		}
 	},
 
 	resume: function () {
-		if (!this.cameraStream) {
+		if (!this.isProcessing) {
 			this.startCamera();
 		}
 	}

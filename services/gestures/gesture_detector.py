@@ -116,9 +116,11 @@ class GestureDetector:
             # Extract wrist x,y in normalized coordinates. Expect `landmarks` list
             # of dicts with keys 'x' and 'y'. Be defensive against unexpected formats.
             try:
-                wrist = hand.get("landmarks", [])[0]
+                landmarks = hand.get("landmarks", [])
+                wrist = landmarks[0]
                 wrist_x = float(wrist.get("x"))
                 wrist_y = float(wrist.get("y"))
+
             except Exception:
                 # Can't extract wrist position for this hand
                 continue

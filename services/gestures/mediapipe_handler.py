@@ -150,6 +150,9 @@ class MediapipeHandler:
         # Convert the BGR image (OpenCV) to RGB for MediaPipe processing.
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
+        # Store a clean copy before any landmarks are drawn on it
+        self._last_raw_frame = frame.copy()
+
         # Create a MediaPipe Image object for processing.
         mp_image = Image(image_format=ImageFormat.SRGB, data=frame_rgb)
         hand_landmarker_result = self._hand_landmarker.detect(mp_image)
@@ -241,7 +244,7 @@ class MediapipeHandler:
             x, y = int(lm.x * width), int(lm.y * height)
             cv2.circle(frame, (x, y), 3, (0, 255, 0), -1)
 
-    def show_last_frame(self, window_name: str = "Mediapipe Hands", overlay_text: Optional[str] = None) -> None:
+    def show_last_frame(self, window_name: str = "Mediapipe Hands", overlay_text: Optional[str] = None, overlay_callback: Optional[Any] = None) -> None:
         """Show the most recently processed frame (with landmarks drawn).
 
         If no frame has been processed yet this will do nothing.
@@ -249,6 +252,7 @@ class MediapipeHandler:
         Args:
             window_name: Name of the OpenCV display window.
             overlay_text: Optional text to render on top of the frame.
+            overlay_callback: Optional function that takes the frame and draws on it.
         """
         if not hasattr(self, "_last_frame") or self._last_frame is None:
             return
@@ -265,6 +269,10 @@ class MediapipeHandler:
                 2,
                 cv2.LINE_AA,
             )
+            
+        if overlay_callback:
+            overlay_callback(frame)
+            
         cv2.imshow(window_name, frame)
 
     def close(self) -> None:

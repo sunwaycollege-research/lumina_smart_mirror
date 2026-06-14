@@ -27,6 +27,10 @@ let config = {
 			}
 		},
 		{
+			module: "custom/MMM-GestureStatus",
+			position: "top_left"
+		},
+		{
 			module: "weather",
 			position: "bottom_left",
 			config: {
@@ -96,7 +100,6 @@ let config = {
 		// --- VOICE RECOGNITION ---
 		{
 			module: "custom/MMM-VoiceBridge",
-			position: "top_right",
 			config: {
 				voiceFile: "/tmp/voice.json",
 				pollInterval: 1000,
