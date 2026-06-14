@@ -83,7 +83,11 @@ let config = {
 			config: {
 				updateInterval: 100,
 				cameraWidth: 320,
-				cameraHeight: 240
+				cameraHeight: 240,
+				// Wait 30s before opening camera so the gesture service (gesture.py)
+				// grabs the webcam first. Without this delay, getUserMedia locks the
+				// camera and OpenCV in gesture.py gets empty frames.
+				startDelay: 30000
 			}
 		},
 		// --- USER INTELLIGENCE: FACE WATCHER PROFILE INTEGRATION ---

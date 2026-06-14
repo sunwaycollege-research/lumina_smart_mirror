@@ -3,7 +3,10 @@ Module.register("healthdashboard", {
 		updateInterval: 100,
 		cameraWidth: 320,
 		cameraHeight: 240,
-		maxSignalLength: 50
+		maxSignalLength: 50,
+		// Delay before opening camera (ms). Gesture service grabs camera on startup;
+		// set to 0 to disable health monitor camera if gesture detection is active.
+		startDelay: 0
 	},
 
 	heartRate: null,
@@ -24,7 +27,13 @@ Module.register("healthdashboard", {
 
 	start: function () {
 		Log.info("Starting module: " + this.name);
-		this.startCamera();
+		var self = this;
+		if (this.config.startDelay > 0) {
+			this.updateStatus("Waiting " + (this.config.startDelay / 1000) + "s before camera start...");
+			setTimeout(function () { self.startCamera(); }, this.config.startDelay);
+		} else {
+			this.startCamera();
+		}
 	},
 
 	getDom: function () {
