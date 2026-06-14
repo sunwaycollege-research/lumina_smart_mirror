@@ -1,6 +1,6 @@
 Module.register("MMM-GestureStatus", {
     defaults: {
-        gestureFile: "/tmp/gesture.json",
+        gestureFile: require("os").tmpdir().replace(/\\/g, "/") + "/gesture.json",
         pollInterval: 1000,
         staleThresholdSeconds: 5,
         displayDuration: 2000

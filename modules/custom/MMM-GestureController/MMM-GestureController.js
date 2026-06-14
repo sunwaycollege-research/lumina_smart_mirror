@@ -3,7 +3,7 @@
 Module.register("MMM-GestureController", {
 
     defaults: {
-        gestureFile: "/tmp/gesture.json",
+        gestureFile: require("os").tmpdir().replace(/\\/g, "/") + "/gesture.json",
         pollInterval: 1000,
         staleThresholdSeconds: 5,
     },

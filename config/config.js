@@ -30,10 +30,10 @@ let config = {
 			module: "custom/MMM-GestureStatus",
 			position: "top_left",
 			config: {
-				gestureFile: require("path").join(__dirname, "..", "temp", "gesture.json"),
+				gestureFile: "C:/Users/Acer/AppData/Local/Temp/gesture.json",
 				pollInterval: 1000,
 				staleThresholdSeconds: 5,
-				displayDuration: 2000
+				displayDuration: 3000
 			}
 		},
 		{
@@ -83,11 +83,7 @@ let config = {
 			config: {
 				updateInterval: 100,
 				cameraWidth: 320,
-				cameraHeight: 240,
-				// Wait 30s before opening camera so the gesture service (gesture.py)
-				// grabs the webcam first. Without this delay, getUserMedia locks the
-				// camera and OpenCV in gesture.py gets empty frames.
-				startDelay: 30000
+				cameraHeight: 240
 			}
 		},
 		// --- USER INTELLIGENCE: FACE WATCHER PROFILE INTEGRATION ---
@@ -102,7 +98,7 @@ let config = {
 		{
 			module: "custom/MMM-GestureController",
 			config: {
-				gestureFile: require("path").join(__dirname, "..", "temp", "gesture.json"),
+				gestureFile: "C:/Users/Acer/AppData/Local/Temp/gesture.json",
 				pollInterval: 1000,
 				staleThresholdSeconds: 5,
 			}
@@ -111,7 +107,7 @@ let config = {
 		{
 			module: "custom/MMM-VoiceBridge",
 			config: {
-				voiceFile: require("path").join(__dirname, "..", "temp", "voice.json"),
+				voiceFile: "C:/Users/Acer/AppData/Local/Temp/voice.json",
 				pollInterval: 1000,
 				staleThresholdSeconds: 5,
 			}
