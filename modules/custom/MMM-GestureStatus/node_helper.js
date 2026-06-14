@@ -1,5 +1,10 @@
 const NodeHelper = require("node_helper");
 const fs = require("fs");
+const path = require("path");
+
+// Compute cross-platform gesture file path: <project_root>/temp/gesture.json
+const PROJECT_ROOT = path.resolve(__dirname, "..", "..", "..");
+const DEFAULT_GESTURE_FILE = path.join(PROJECT_ROOT, "temp", "gesture.json");
 
 module.exports = NodeHelper.create({
     start: function() {
@@ -15,9 +20,8 @@ module.exports = NodeHelper.create({
     },
 
     poll: function() {
-        if (!this.config || !this.config.gestureFile) return;
-
-        fs.readFile(this.config.gestureFile, "utf8", (err, data) => {
+        const gestureFile = (this.config && this.config.gestureFile) ? this.config.gestureFile : DEFAULT_GESTURE_FILE;
+        fs.readFile(gestureFile, "utf8", (err, data) => {
             if (!err) {
                 try {
                     const record = JSON.parse(data);

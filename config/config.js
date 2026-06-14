@@ -28,7 +28,13 @@ let config = {
 		},
 		{
 			module: "custom/MMM-GestureStatus",
-			position: "top_left"
+			position: "top_left",
+			config: {
+				gestureFile: require("path").join(__dirname, "..", "temp", "gesture.json"),
+				pollInterval: 1000,
+				staleThresholdSeconds: 5,
+				displayDuration: 2000
+			}
 		},
 		{
 			module: "weather",
