@@ -10,5 +10,11 @@
         "theme": "dark",
         "role": "Student",
         "welcomeMessage": "Sup son"
+    },
+    "Prince": {
+        "name": "Prince",
+        "theme": "dark",
+        "role": "Student",
+        "welcomeMessage": "welcome prince"
     }
 }

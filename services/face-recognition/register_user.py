@@ -4,8 +4,6 @@ import time
 import json
 import logging
 import re
-# pyrefly: ignore [missing-import]
-import face_recognition
 from typing import List, Dict, Any, Optional
 
 from face_detector import FaceDetector
@@ -32,11 +30,28 @@ def validate_username(username: str) -> bool:
     return bool(re.match(r"^[a-zA-Z0-9_-]{2,30}$", username))
 
 
+def _find_camera_index(max_index: int = 2) -> int | None:
+    """
+    Probes camera indices 0 through max_index and returns the first one
+    that OpenCV can open successfully.  Returns None if no camera is found.
+    """
+    for idx in range(max_index + 1):
+        cap = cv2.VideoCapture(idx)
+        if cap is not None and cap.isOpened():
+            cap.release()
+            logger.info(f"Auto-detected camera at index {idx}.")
+            return idx
+        if cap is not None:
+            cap.release()
+    logger.error(f"No camera found at indices 0–{max_index}.")
+    return None
+
+
 def register_user(username: str) -> None:
     """
-    Registers a new user by capturing face images from the webcam, generating encodings,
-    and writing profile details.
-    
+    Registers a new user by capturing face images from the webcam, generating
+    DeepFace embeddings, and writing profile details.
+
     Args:
         username (str): The unique identifier for the user.
     """
@@ -49,7 +64,22 @@ def register_user(username: str) -> None:
     # Initialize managers
     pm = ProfileManager(profiles_json)
     recognizer = FaceRecognizer(encodings_json)
-    detector = FaceDetector(camera_index=1)
+
+    # Auto-detect the first available camera index (tries 0, 1, 2)
+    camera_index = _find_camera_index()
+    if camera_index is None:
+        print("[ERROR] No camera found at indices 0, 1, or 2. Please check camera connections.")
+        return
+    detector = FaceDetector(camera_index=camera_index)
+
+    # Abort early if DeepFace failed to load
+    if not recognizer._deepface_ready:
+        print(
+            "\n[ERROR] DeepFace is not installed or failed to initialise.\n"
+            "Run:  pip install deepface tf-keras\n"
+            "Then re-run this script."
+        )
+        return
 
     # 1. Validation and Checks
     if not validate_username(username):
@@ -135,31 +165,26 @@ def register_user(username: str) -> None:
 
             # Only capture if exactly 1 face is visible (prevents overlapping encodings)
             if len(faces) == 1:
-                x, y, w, h = faces[0]
-                
-                # Check face image quality using face_recognition
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                # Convert cv2 coordinates to dlib structure
-                dlib_face = (y, x + w, y + h, x)
-                
-                encodings = face_recognition.face_encodings(rgb_frame, [dlib_face])
-                if encodings:
+                face_loc = faces[0]  # (x, y, w, h)
+
+                # Generate DeepFace embedding for this face crop
+                embedding = recognizer.get_embedding(frame, face_loc)
+                if embedding is not None:
                     # Save raw image to profiles/faces/<username>/face_X.jpg
                     sample_count += 1
                     img_filename = f"face_{sample_count}.jpg"
                     img_path = os.path.join(faces_dir, img_filename)
                     cv2.imwrite(img_path, frame)
-                    
-                    # Convert encoding numpy array to list of floats for JSON compatibility
-                    encoding_list = encodings[0].tolist()
-                    captured_encodings.append(encoding_list)
-                    
+
+                    # Store embedding as plain Python list for JSON serialisation
+                    captured_encodings.append(embedding.tolist())
+
                     print(f"Captured face sample {sample_count}/{max_samples} and saved to {img_filename}")
-                    
+
                     # Short delay to capture slightly different angles
                     time.sleep(1.0)
                 else:
-                    logger.debug("Detected face but failed to extract encoding. Skipping frame.")
+                    logger.debug("Detected face but DeepFace returned no embedding. Skipping frame.")
             elif len(faces) > 1:
                 print("[WARNING] Multiple faces detected. Please make sure only one face is visible.")
                 time.sleep(1.0)
@@ -180,11 +205,11 @@ def register_user(username: str) -> None:
     if sample_count == max_samples:
         print("\n--- Processing and Saving Data ---")
         
-        # Save face encodings to encodings.json
+        # Save face embeddings to encodings.json
         encodings_dict = recognizer.get_encodings_dict()
         encodings_dict[username] = captured_encodings
         if recognizer.save_encodings(encodings_dict):
-            print("Facial encodings saved successfully.")
+            print("Facial embeddings saved successfully.")
         
         # Save profile metadata to users.json
         pm.create_profile(
