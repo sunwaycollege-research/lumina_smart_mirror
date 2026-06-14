@@ -4,6 +4,7 @@ import time
 import json
 import logging
 import re
+# pyrefly: ignore [missing-import]
 import face_recognition
 from typing import List, Dict, Any, Optional
 
