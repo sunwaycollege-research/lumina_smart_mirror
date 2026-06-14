@@ -1,9 +1,9 @@
 {
     "Utkrista": {
-        "name": "Utkrista",
+        "name": "Utkristaa",
         "theme": "dark",
-        "role": "Student",
-        "welcomeMessage": "Welcome back Utkrista"
+        "role": "Team Lead",
+        "welcomeMessage": "Hello Utkrista"
     },
     "Sulav": {
         "name": "Dawgybey",
