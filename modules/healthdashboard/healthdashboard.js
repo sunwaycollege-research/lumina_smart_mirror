@@ -3,7 +3,7 @@ Module.register("healthdashboard", {
 		updateInterval: 100,
 		cameraWidth: 320,
 		cameraHeight: 240,
-		maxSignalLength: 300
+		maxSignalLength: 50
 	},
 
 	heartRate: null,
@@ -145,7 +145,7 @@ Module.register("healthdashboard", {
 				this.ppgSignal.shift();
 			}
 
-			if (this.ppgSignal.length >= 50) {
+			if (this.ppgSignal.length >= this.config.maxSignalLength) {
 				var result = this.processHeartRate(this.ppgSignal);
 				this.drawWaveform();
 				if (result && result.hr > 40 && result.hr < 220) {
@@ -261,7 +261,7 @@ Module.register("healthdashboard", {
 		for (var i = 0; i < n; i++) {
 			if (Math.abs(filtered[i]) > maxVal) maxVal = Math.abs(filtered[i]);
 		}
-		var threshold = maxVal * 0.4;
+		var threshold = maxVal * 0.3;
 		var dt = this.config.updateInterval / 1000;
 
 		var peaks = [];
@@ -278,14 +278,14 @@ Module.register("healthdashboard", {
 		}
 		this.peaks = peaks;
 
-		if (peaks.length < 3) return null;
+		if (peaks.length < 2) return null;
 
 		var ibis = [];
 		for (var i = 1; i < peaks.length; i++) {
 			var ibi = (peaks[i] - peaks[i - 1]) * dt;
 			if (ibi > 0.3 && ibi < 2.0) ibis.push(ibi);
 		}
-		if (ibis.length < 2) return null;
+		if (ibis.length < 1) return null;
 
 		var avgIBI = 0;
 		for (var i = 0; i < ibis.length; i++) avgIBI += ibis[i];

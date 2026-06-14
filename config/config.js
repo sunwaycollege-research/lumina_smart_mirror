@@ -61,11 +61,6 @@ let config = {
 				updateInterval: 300000
 			}
 		},
-		// --- BOTTOM HORIZONTAL TICKER: LOCAL INTELLIGENCE ---
-		{
-			module: "mmm-kchakhabar",
-			position: "bottom_bar"
-		},
 		// --- RIGHT-CENTER: rPPG Health Monitor ---
 		{
 			module: "healthdashboard",
@@ -93,16 +88,7 @@ let config = {
 				staleThresholdSeconds: 5,
 			}
 		},
-		// --- VOICE RECOGNITION ---
-		{
-			module: "custom/MMM-VoiceBridge",
-			position: "top_right",
-			config: {
-				voiceFile: "/tmp/voice.json",
-				pollInterval: 1000,
-				staleThresholdSeconds: 5,
-			}
-		}
+
 	]
 };
 
