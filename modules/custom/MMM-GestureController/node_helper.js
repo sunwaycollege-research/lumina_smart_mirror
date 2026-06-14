@@ -7,11 +7,20 @@ const { spawn } = require("child_process");
 module.exports = NodeHelper.create({
 
     start() {
-        this.voiceFile = null; // Clean/reset if needed
+        this.voiceFile = null;
         this.gestureFile = null;
         this.staleThresholdSeconds = 5;
         this.lastProcessedTimestamp = 0;
         this.gestureProcess = null;
+
+        // Compute cross-platform gesture file path: <project_root>/temp/gesture.json
+        const projectRoot = path.resolve(__dirname, "..", "..", "..");
+        const tempDir = path.join(projectRoot, "temp");
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+        this.defaultGestureFile = path.join(tempDir, "gesture.json").replace(/\\/g, "/");
+        console.log(`[MMM-GestureController] Gesture file path: ${this.defaultGestureFile}`);
 
         // Clean up any existing orphan gesture.py processes first
         try {

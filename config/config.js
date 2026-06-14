@@ -92,7 +92,7 @@ let config = {
 		{
 			module: "custom/MMM-GestureController",
 			config: {
-				gestureFile: "/tmp/gesture.json",
+				gestureFile: require("path").join(__dirname, "..", "temp", "gesture.json"),
 				pollInterval: 1000,
 				staleThresholdSeconds: 5,
 			}
@@ -101,7 +101,7 @@ let config = {
 		{
 			module: "custom/MMM-VoiceBridge",
 			config: {
-				voiceFile: "/tmp/voice.json",
+				voiceFile: require("path").join(__dirname, "..", "temp", "voice.json"),
 				pollInterval: 1000,
 				staleThresholdSeconds: 5,
 			}

@@ -74,3 +74,6 @@ yarn.lock
 
 # Vitest temporary test files
 tests/**/.tmp/
+
+# Runtime IPC files
+temp/*.json

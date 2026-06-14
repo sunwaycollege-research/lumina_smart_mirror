@@ -1,0 +1,2 @@
+# This file keeps the temp/ directory in git.
+# gesture.json and voice.json are written here at runtime and are gitignored.

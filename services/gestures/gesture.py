@@ -20,6 +20,12 @@ import sys
 import time
 from pathlib import Path
 
+# Cross-platform gesture file location: <project_root>/temp/gesture.json
+# Falls back to /tmp/gesture.json on Linux if the project root can't be determined.
+_SERVICE_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _SERVICE_DIR.parent.parent
+_DEFAULT_GESTURE_PATH = str(_PROJECT_ROOT / "temp" / "gesture.json")
+
 import cv2
 
 try:
@@ -35,7 +41,7 @@ except Exception:
     from frame_server import FrameServer
 
 
-def _save_gesture(gesture: str, path: str = "/tmp/gesture.json") -> None:
+def _save_gesture(gesture: str, path: str = _DEFAULT_GESTURE_PATH) -> None:
     """Save the detected gesture and timestamp to a JSON file."""
     record = {"gesture": gesture, "timestamp": int(time.time())}
     try:
