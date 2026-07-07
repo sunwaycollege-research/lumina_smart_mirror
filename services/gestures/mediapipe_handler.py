@@ -80,19 +80,11 @@ class MediapipeHandler:
         # Simple logger
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    def init_camera(self) -> None:
-        """Open the default webcam and initialize MediaPipe HandLandmarker.
+    def init_landmarker(self) -> None:
+        """Initialize only the MediaPipe HandLandmarker without opening the camera.
 
-        This prepares resources needed for `get_hand_landmarks()`.
+        This enables using process_frame_direct on frames captured by another system.
         """
-        # Initialize VideoCapture for webcam input.
-        self.capture = cv2.VideoCapture(self.camera_id)
-        if not self.capture.isOpened():
-            raise RuntimeError(f"Unable to open camera id={self.camera_id}")
-
-        # Initialize MediaPipe HandLandmarker with chosen parameters.
-        # The HandLandmarker requires a model file. We use the default MediaPipe model
-        # which will be downloaded automatically if not present.
         import urllib.request
         import os
         
@@ -121,8 +113,86 @@ class MediapipeHandler:
             min_hand_presence_confidence=self.tracking_confidence,
         )
         self._hand_landmarker = vision.HandLandmarker.create_from_options(options)
+        self.logger.info("MediaPipe HandLandmarker initialized")
 
-        self.logger.info("Camera and MediaPipe HandLandmarker initialized")
+    def init_camera(self) -> None:
+        """Open the default webcam and initialize MediaPipe HandLandmarker.
+
+        This prepares resources needed for `get_hand_landmarks()`.
+        """
+        # Initialize VideoCapture for webcam input.
+        self.capture = cv2.VideoCapture(self.camera_id)
+        if not self.capture.isOpened():
+            fallback_id = 0 if self.camera_id != 0 else 1
+            self.logger.info(f"Failed to open camera id={self.camera_id}. Trying fallback id={fallback_id}...")
+            self.capture = cv2.VideoCapture(fallback_id)
+            if not self.capture.isOpened():
+                raise RuntimeError(f"Unable to open camera id={self.camera_id} or fallback id={fallback_id}")
+            self.camera_id = fallback_id
+
+        self.init_landmarker()
+        self.logger.info("Camera initialized")
+
+    def process_frame_direct(self, frame: Any) -> List[Dict[str, Any]]:
+        """Process a pre-captured NumPy frame directly and return hand landmarks.
+
+        Does not capture from internal capture object.
+        """
+        if self._hand_landmarker is None:
+            raise RuntimeError("MediaPipe HandLandmarker not initialized. Call init_landmarker() first.")
+
+        if frame is None:
+            return []
+
+        # Convert the BGR image (OpenCV) to RGB for MediaPipe processing.
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # Create a MediaPipe Image object for processing.
+        mp_image = Image(image_format=ImageFormat.SRGB, data=frame_rgb)
+        hand_landmarker_result = self._hand_landmarker.detect(mp_image)
+
+        hands_output: List[Dict[str, Any]] = []
+        image_height, image_width = frame.shape[:2]
+
+        handedness_lists = getattr(hand_landmarker_result, "handedness", None)
+        landmarks_candidates = [
+            getattr(hand_landmarker_result, "landmarks", None),
+            getattr(hand_landmarker_result, "hand_landmarks", None),
+            getattr(hand_landmarker_result, "hand_world_landmarks", None),
+        ]
+        landmarks_lists = None
+        for cand in landmarks_candidates:
+            if cand:
+                landmarks_lists = cand
+                break
+
+        if handedness_lists and landmarks_lists:
+            for handedness_list, hand_landmarks_list in zip(
+                handedness_lists, landmarks_lists
+            ):
+                if handedness_list:
+                    label = getattr(handedness_list[0], "category_name", "Unknown")
+                else:
+                    label = "Unknown"
+
+                normalized_landmarks = []
+                pixel_landmarks = []
+                for idx, lm in enumerate(hand_landmarks_list):
+                    normalized = {"index": idx, "x": lm.x, "y": lm.y, "z": lm.z}
+                    px = {"x": int(lm.x * image_width), "y": int(lm.y * image_height)}
+                    normalized_landmarks.append(normalized)
+                    pixel_landmarks.append(px)
+
+                hands_output.append(
+                    {
+                        "handedness": label,
+                        "landmarks": normalized_landmarks,
+                        "landmarks_px": pixel_landmarks,
+                    }
+                )
+
+        return hands_output
+
 
     def get_hand_landmarks(self) -> List[Dict[str, Any]]:
         """Capture one frame, process it with MediaPipe HandLandmarker, draw landmarks,
@@ -265,7 +335,10 @@ class MediapipeHandler:
                 2,
                 cv2.LINE_AA,
             )
-        cv2.imshow(window_name, frame)
+        try:
+            cv2.imshow(window_name, frame)
+        except Exception as e:
+            self.logger.debug(f"Could not show display window (likely running in a headless environment): {e}")
 
     def close(self) -> None:
         """Release camera and MediaPipe resources safely.

@@ -1,16 +1,19 @@
 import os
 import json
-import logging
 from typing import Dict, Any, Optional
 
-# Configure logger
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+try:
+    from logger import get_logger
+    logger = get_logger("ProfileManager")
+except ImportError:
+    import logging
+    logger = logging.getLogger("ProfileManager")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [ProfileManager]: %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
 
 
 class ProfileManager:

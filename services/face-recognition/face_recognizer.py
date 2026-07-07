@@ -1,19 +1,22 @@
 import os
 import json
-import logging
 import numpy as np
 import cv2
 import face_recognition
 from typing import Dict, List, Tuple, Optional, Any
 
-# Configure logger
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+try:
+    from logger import get_logger
+    logger = get_logger("FaceRecognizer")
+except ImportError:
+    import logging
+    logger = logging.getLogger("FaceRecognizer")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [FaceRecognizer]: %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
 
 
 class FaceRecognizer:
@@ -61,7 +64,7 @@ class FaceRecognizer:
 
     def save_encodings(self, encodings_dict: Dict[str, List[List[float]]]) -> bool:
         """
-        Overwrites or saves the encodings database to the JSON file.
+        Overwrites or saves the encodings database to the JSON file after removing duplicate vectors.
         
         Args:
             encodings_dict (dict): Dictionary mapping usernames to list of their face encodings.
@@ -70,10 +73,18 @@ class FaceRecognizer:
             bool: True if saving succeeded, False otherwise.
         """
         try:
+            cleaned_dict = {}
+            for user, encs in encodings_dict.items():
+                seen = []
+                for enc in encs:
+                    if enc not in seen:
+                        seen.append(enc)
+                cleaned_dict[user] = seen
+
             os.makedirs(os.path.dirname(self.encodings_path), exist_ok=True)
             with open(self.encodings_path, 'w') as f:
-                json.dump(encodings_dict, f, indent=4)
-            logger.info(f"Encodings saved successfully to {self.encodings_path}")
+                json.dump(cleaned_dict, f, indent=4)
+            logger.info(f"Encodings saved successfully to {self.encodings_path} (deduplicated)")
             # Reload internal encodings
             self.load_encodings()
             return True

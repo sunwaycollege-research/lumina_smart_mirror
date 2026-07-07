@@ -78,11 +78,57 @@ class GestureDetector:
         # Per-hand history of wrist y positions (normalized).
         self._histories_y: Dict[str, deque[float]] = {}
 
+        # Per-hand history of extended finger counts.
+        self._histories_fingers: Dict[str, deque[int]] = {}
+
         # Last frame index when a gesture was triggered for each hand key
         self._last_trigger_frame: Dict[str, int] = {}
 
         # Simple frame counter to implement cooldowns
         self._frame_index = 0
+
+    def count_extended_fingers(self, hand: Dict[str, Any]) -> int:
+        """Count the number of extended fingers based on landmarks."""
+        try:
+            landmarks = hand.get("landmarks", [])
+            if len(landmarks) < 21:
+                return -1
+                
+            # Extended fingers check: tip y < pip/mcp y
+            # Index: 8 (tip), 6 (pip)
+            # Middle: 12 (tip), 10 (pip)
+            # Ring: 16 (tip), 14 (pip)
+            # Pinky: 20 (tip), 18 (pip)
+            extended = 0
+            
+            # Index Finger
+            if landmarks[8].get("y") < landmarks[6].get("y"):
+                extended += 1
+            # Middle Finger
+            if landmarks[12].get("y") < landmarks[10].get("y"):
+                extended += 1
+            # Ring Finger
+            if landmarks[16].get("y") < landmarks[14].get("y"):
+                extended += 1
+            # Pinky Finger
+            if landmarks[20].get("y") < landmarks[18].get("y"):
+                extended += 1
+                
+            # Thumb Heuristic: tip x compared to joint x
+            handedness = hand.get("handedness", "Right")
+            tip_x = landmarks[4].get("x")
+            mcp_x = landmarks[2].get("x")
+            
+            if handedness == "Right":
+                if tip_x < mcp_x - 0.04 or landmarks[4].get("y") < landmarks[2].get("y") - 0.05:
+                    extended += 1
+            else: # Left Hand
+                if tip_x > mcp_x + 0.04 or landmarks[4].get("y") < landmarks[2].get("y") - 0.05:
+                    extended += 1
+                    
+            return extended
+        except Exception:
+            return -1
 
     def _hand_key(self, hand: Dict[str, Any], index: int) -> str:
         """Produce a stable key for a detected hand.
@@ -94,14 +140,33 @@ class GestureDetector:
             return label
         return f"hand_{index}"
 
+    def is_thumbs_up(self, hand: Dict[str, Any]) -> bool:
+        try:
+            landmarks = hand.get("landmarks", [])
+            if len(landmarks) < 21:
+                return False
+            
+            # Check other fingers are folded
+            index_folded = landmarks[8].get("y") > landmarks[6].get("y")
+            middle_folded = landmarks[12].get("y") > landmarks[10].get("y")
+            ring_folded = landmarks[16].get("y") > landmarks[14].get("y")
+            pinky_folded = landmarks[20].get("y") > landmarks[18].get("y")
+            
+            # Check thumb is pointing up
+            thumb_up = landmarks[4].get("y") < landmarks[3].get("y") and landmarks[3].get("y") < landmarks[2].get("y")
+            
+            return index_folded and middle_folded and ring_folded and pinky_folded and thumb_up
+        except Exception:
+            return False
+
     def detect(self, hands: Optional[List[Dict[str, Any]]]) -> Optional[str]:
-        """Process current frame hands and return 'LEFT', 'RIGHT', 'UP', 'DOWN', or None.
+        """Process current frame hands and return 'LEFT', 'RIGHT', 'UP', 'DOWN', or finger gestures.
 
         Args:
             hands: list of hand dicts (as returned by `MediapipeHandler.get_hand_landmarks()`)
 
         Returns:
-            'LEFT' | 'RIGHT' | 'UP' | 'DOWN' | None
+            'LEFT' | 'RIGHT' | 'UP' | 'DOWN' | 'CLOSED_FIST' | 'ONE_FINGER' | 'TWO_FINGERS' | 'THREE_FINGERS' | 'FOUR_FINGERS' | 'FIVE_FINGERS' | 'THUMBS_UP' | None
         """
         self._frame_index += 1
 
@@ -109,18 +174,51 @@ class GestureDetector:
             # No hands detected: decay nothing but keep advancing frame index
             return None
 
-        # Check each detected hand for a swipe
+        # Check each detected hand for finger gestures and swipes
         for idx, hand in enumerate(hands):
             key = self._hand_key(hand, idx)
 
-            # Extract wrist x,y in normalized coordinates. Expect `landmarks` list
-            # of dicts with keys 'x' and 'y'. Be defensive against unexpected formats.
+            # Check for Thumbs Up first as it is unique and easier to escape home
+            if self.is_thumbs_up(hand):
+                last_thumb = self._last_trigger_frame.get(key + "_thumb", -9999)
+                if (self._frame_index - last_thumb) > self.cooldown_frames:
+                    self._last_trigger_frame[key + "_thumb"] = self._frame_index
+                    return "THUMBS_UP"
+
+            # 1. Finger Count Gestures (highest priority for 0-touch module selection)
+            fingers = self.count_extended_fingers(hand)
+            if fingers >= 0:
+                hist_f = self._histories_fingers.setdefault(key, deque(maxlen=4))
+                hist_f.append(fingers)
+                
+                if len(hist_f) >= 3:
+                    from collections import Counter
+                    count_freq = Counter(hist_f)
+                    most_common, freq = count_freq.most_common(1)[0]
+                    if freq >= 3:
+                        # Cooldown check specific to finger gestures
+                        last_finger = self._last_trigger_frame.get(key + "_finger", -9999)
+                        if (self._frame_index - last_finger) > self.cooldown_frames:
+                            gesture_map = {
+                                0: "CLOSED_FIST",
+                                1: "ONE_FINGER",
+                                2: "TWO_FINGERS",
+                                3: "THREE_FINGERS",
+                                4: "FOUR_FINGERS",
+                                5: "FIVE_FINGERS"
+                            }
+                            self._last_trigger_frame[key + "_finger"] = self._frame_index
+                            # Clear directional swipe queues to avoid double gestures
+                            if key in self._histories_x: self._histories_x[key].clear()
+                            if key in self._histories_y: self._histories_y[key].clear()
+                            return gesture_map[most_common]
+
+            # 2. Extract wrist x,y for Directional Swipes fallback
             try:
                 wrist = hand.get("landmarks", [])[0]
                 wrist_x = float(wrist.get("x"))
                 wrist_y = float(wrist.get("y"))
             except Exception:
-                # Can't extract wrist position for this hand
                 continue
 
             hist_x = self._histories_x.setdefault(key, deque(maxlen=self.window_size))
@@ -136,10 +234,9 @@ class GestureDetector:
             delta_x = hist_x[-1] - hist_x[0]
             delta_y = hist_y[-1] - hist_y[0]
 
-            # Cooldown check
+            # Cooldown check for swipes
             last = self._last_trigger_frame.get(key, -9999)
             if (self._frame_index - last) < self.cooldown_frames:
-                # Still in cooldown for this hand
                 continue
 
             # Determine dominant axis and classify gesture

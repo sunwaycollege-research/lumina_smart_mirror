@@ -61,10 +61,16 @@ class FaceDetector:
             
             if not self.cap.isOpened():
                 logger.error(f"Failed to open webcam at index {self.camera_index}.")
-                self.cap = None
-                return False
+                fallback_index = 0 if self.camera_index != 0 else 1
+                logger.info(f"Attempting fallback to camera index {fallback_index}...")
+                self.cap = cv2.VideoCapture(fallback_index)
+                if not self.cap.isOpened():
+                    logger.error(f"Fallback to webcam at index {fallback_index} failed.")
+                    self.cap = None
+                    return False
+                self.camera_index = fallback_index
 
-            logger.info("Camera started successfully.")
+            logger.info(f"Camera started successfully on index {self.camera_index}.")
             return True
         except Exception as e:
             logger.error(f"Error occurred while starting camera: {e}")

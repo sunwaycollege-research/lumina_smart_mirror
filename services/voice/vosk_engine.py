@@ -35,7 +35,12 @@ class VoskEngine:
     """Vosk engine responsible for microphone transcription."""
 
     def __init__(self, model_path: Optional[str] = None, sample_rate: int = 16000) -> None:
-        self.model_path = model_path or str(Path("d:/coding/College/Projects/Lumina/smart_mirror/vosk-model-small-en-us-0.15/vosk-model-small-en-us-0.15"))
+        if not model_path:
+            # Dynamically resolve relative to the workspace root
+            current_dir = Path(__file__).resolve().parent
+            workspace_dir = current_dir.parent.parent
+            model_path = str(workspace_dir / "vosk-model-small-en-us-0.15" / "vosk-model-small-en-us-0.15")
+        self.model_path = model_path
         self.sample_rate = sample_rate
         self.logger = logging.getLogger(self.__class__.__name__)
         self._model = None

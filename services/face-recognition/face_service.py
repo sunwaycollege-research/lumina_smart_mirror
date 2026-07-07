@@ -10,14 +10,18 @@ from face_detector import FaceDetector
 from face_recognizer import FaceRecognizer
 from profile_manager import ProfileManager
 
-# Configure logger
-logger = logging.getLogger("FaceService")
-if not logger.handlers:
-    handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+try:
+    from logger import get_logger
+    logger = get_logger("FaceService")
+except ImportError:
+    import logging
+    logger = logging.getLogger("FaceService")
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [FaceService]: %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
 
 
 class FaceService:
