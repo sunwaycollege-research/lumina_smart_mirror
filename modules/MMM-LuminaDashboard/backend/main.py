@@ -8,6 +8,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 warnings.filterwarnings("ignore", category=UserWarning, module="face_recognition_models")
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message=".*pkg_resources.*")
 
 import asyncio
 import cv2
@@ -26,6 +27,7 @@ from logger import get_logger
 logger = get_logger("LuminaBackend")
 
 app = FastAPI(title="Lumina Smart Mirror OS Engine v2")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -578,14 +580,18 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                     # Mirror the frame horizontally for natural mirror-like behavior
                     frame = cv2.flip(frame, 1)
                     
-                    # 1. Biological telemetry extraction
+                    # 1. Run vision and gesture processing in parallel for lower latency
                     loop = asyncio.get_event_loop()
-                    vision_data = await loop.run_in_executor(None, vision_system.process_frame, frame)
+                    vision_future = loop.run_in_executor(None, vision_system.process_frame, frame)
+                    gesture_future = loop.run_in_executor(None, gesture_handler.process_frame_direct, frame)
                     
-                    # 2. Gesture Detection (processed directly on current frame)
-                    hand_landmarks = gesture_handler.process_frame_direct(frame)
+                    vision_data = await vision_future
+                    hand_landmarks = await gesture_future
+                    
+                    # 2. Gesture classification (lightweight, runs on main thread)
                     raw_gesture = gesture_detector.detect(hand_landmarks)
                     if raw_gesture:
+                        logger.info(f"[GESTURE DEBUG] Detected raw gesture: {raw_gesture}")
                         if raw_gesture == "LEFT":
                             active_gesture = "SWIPE_LEFT"
                         elif raw_gesture == "RIGHT":
@@ -772,8 +778,7 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Unexpected error in WebSocket loop: {e}", exc_info=True)
     finally:
-        system_health["websocket_active_connections"] = max(0, system_health["websocket_active_connections"])
-        system_health["websocket_active_connections"] -= 1
+        system_health["websocket_active_connections"] = max(0, system_health["websocket_active_connections"] - 1)
         logger.info(f"WebSocket cleanup. Active connections: {system_health['websocket_active_connections']}")
         if camera.isOpened():
             camera.release()

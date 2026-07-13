@@ -53,23 +53,25 @@ class GestureDetector:
 
     def __init__(
         self,
-        window_size: int = 8,
+        window_size: int = 5,
         threshold: Optional[float] = None,
         horizontal_threshold: Optional[float] = None,
         vertical_threshold: Optional[float] = None,
-        cooldown_frames: int = 10,
+        cooldown_frames: int = 6,
+        enable_static_poses: bool = False,
     ) -> None:
         self.window_size = max(2, window_size)
 
         # Handle threshold parameter for backward compatibility
         if horizontal_threshold is None:
-            horizontal_threshold = threshold if threshold is not None else 0.12
+            horizontal_threshold = threshold if threshold is not None else 0.08
         if vertical_threshold is None:
-            vertical_threshold = threshold if threshold is not None else 0.12
+            vertical_threshold = threshold if threshold is not None else 0.08
 
         self.horizontal_threshold = float(horizontal_threshold)
         self.vertical_threshold = float(vertical_threshold)
         self.cooldown_frames = int(cooldown_frames)
+        self.enable_static_poses = enable_static_poses
 
         # Per-hand history of wrist x positions (normalized). Keyed by
         # handedness label when available, otherwise by numeric index.
@@ -171,49 +173,26 @@ class GestureDetector:
         self._frame_index += 1
 
         if not hands:
-            # No hands detected: decay nothing but keep advancing frame index
+            # Clear histories when no hands are detected to avoid ghost gestures
+            self._histories_x.clear()
+            self._histories_y.clear()
+            self._histories_fingers.clear()
             return None
 
-        # Check each detected hand for finger gestures and swipes
+        # Clear histories for hands that are no longer detected
+        detected_keys = {self._hand_key(h, i) for i, h in enumerate(hands)}
+        for key in list(self._histories_x.keys()):
+            if key not in detected_keys:
+                self._histories_x[key].clear()
+                self._histories_y[key].clear()
+                if key in self._histories_fingers:
+                    self._histories_fingers[key].clear()
+
+        # Check each detected hand
         for idx, hand in enumerate(hands):
             key = self._hand_key(hand, idx)
 
-            # Check for Thumbs Up first as it is unique and easier to escape home
-            if self.is_thumbs_up(hand):
-                last_thumb = self._last_trigger_frame.get(key + "_thumb", -9999)
-                if (self._frame_index - last_thumb) > self.cooldown_frames:
-                    self._last_trigger_frame[key + "_thumb"] = self._frame_index
-                    return "THUMBS_UP"
-
-            # 1. Finger Count Gestures (highest priority for 0-touch module selection)
-            fingers = self.count_extended_fingers(hand)
-            if fingers >= 0:
-                hist_f = self._histories_fingers.setdefault(key, deque(maxlen=4))
-                hist_f.append(fingers)
-                
-                if len(hist_f) >= 3:
-                    from collections import Counter
-                    count_freq = Counter(hist_f)
-                    most_common, freq = count_freq.most_common(1)[0]
-                    if freq >= 3:
-                        # Cooldown check specific to finger gestures
-                        last_finger = self._last_trigger_frame.get(key + "_finger", -9999)
-                        if (self._frame_index - last_finger) > self.cooldown_frames:
-                            gesture_map = {
-                                0: "CLOSED_FIST",
-                                1: "ONE_FINGER",
-                                2: "TWO_FINGERS",
-                                3: "THREE_FINGERS",
-                                4: "FOUR_FINGERS",
-                                5: "FIVE_FINGERS"
-                            }
-                            self._last_trigger_frame[key + "_finger"] = self._frame_index
-                            # Clear directional swipe queues to avoid double gestures
-                            if key in self._histories_x: self._histories_x[key].clear()
-                            if key in self._histories_y: self._histories_y[key].clear()
-                            return gesture_map[most_common]
-
-            # 2. Extract wrist x,y for Directional Swipes fallback
+            # 1. Update wrist history first
             try:
                 wrist = hand.get("landmarks", [])[0]
                 wrist_x = float(wrist.get("x"))
@@ -226,51 +205,81 @@ class GestureDetector:
             hist_x.append(wrist_x)
             hist_y.append(wrist_y)
 
-            # Need at least two samples to compute delta
-            if len(hist_x) < 2 or len(hist_y) < 2:
-                continue
+            # 2. Check for Directional Swipes first (high priority for active navigation)
+            if len(hist_x) >= 2 and len(hist_y) >= 2:
+                # Compute movement from oldest to newest in the window
+                delta_x = hist_x[-1] - hist_x[0]
+                delta_y = hist_y[-1] - hist_y[0]
 
-            # Compute movement from oldest to newest in the window
-            delta_x = hist_x[-1] - hist_x[0]
-            delta_y = hist_y[-1] - hist_y[0]
+                # Cooldown check for swipes
+                last_swipe = self._last_trigger_frame.get(key, -9999)
+                if (self._frame_index - last_swipe) >= self.cooldown_frames:
+                    abs_delta_x = abs(delta_x)
+                    abs_delta_y = abs(delta_y)
 
-            # Cooldown check for swipes
-            last = self._last_trigger_frame.get(key, -9999)
-            if (self._frame_index - last) < self.cooldown_frames:
-                continue
+                    if abs_delta_x > abs_delta_y:
+                        if delta_x <= -self.horizontal_threshold:
+                            self._last_trigger_frame[key] = self._frame_index
+                            hist_x.clear()
+                            hist_y.clear()
+                            return "LEFT"
+                        elif delta_x >= self.horizontal_threshold:
+                            self._last_trigger_frame[key] = self._frame_index
+                            hist_x.clear()
+                            hist_y.clear()
+                            return "RIGHT"
+                    else:
+                        if delta_y <= -self.vertical_threshold:
+                            self._last_trigger_frame[key] = self._frame_index
+                            hist_x.clear()
+                            hist_y.clear()
+                            return "UP"
+                        elif delta_y >= self.vertical_threshold:
+                            self._last_trigger_frame[key] = self._frame_index
+                            hist_x.clear()
+                            hist_y.clear()
+                            return "DOWN"
 
-            # Determine dominant axis and classify gesture
-            abs_delta_x = abs(delta_x)
-            abs_delta_y = abs(delta_y)
+            # 3. Check for Static Poses (only if the hand is relatively stationary)
+            is_stationary = True
+            if len(hist_x) >= 3:
+                range_x = max(hist_x) - min(hist_x)
+                range_y = max(hist_y) - min(hist_y)
+                # If the hand is moving, don't trigger static poses (avoids noise during swipes)
+                if range_x > 0.05 or range_y > 0.05:
+                    is_stationary = False
 
-            # If horizontal movement dominates, check for LEFT/RIGHT
-            if abs_delta_x > abs_delta_y:
-                if delta_x <= -self.horizontal_threshold:
-                    # Significant movement to the left
-                    self._last_trigger_frame[key] = self._frame_index
-                    hist_x.clear()
-                    hist_y.clear()
-                    return "LEFT"
-                if delta_x >= self.horizontal_threshold:
-                    # Significant movement to the right
-                    self._last_trigger_frame[key] = self._frame_index
-                    hist_x.clear()
-                    hist_y.clear()
-                    return "RIGHT"
-            # If vertical movement dominates, check for UP/DOWN
-            else:
-                if delta_y <= -self.vertical_threshold:
-                    # Significant upward movement (y decreases when moving up)
-                    self._last_trigger_frame[key] = self._frame_index
-                    hist_x.clear()
-                    hist_y.clear()
-                    return "UP"
-                if delta_y >= self.vertical_threshold:
-                    # Significant downward movement (y increases when moving down)
-                    self._last_trigger_frame[key] = self._frame_index
-                    hist_x.clear()
-                    hist_y.clear()
-                    return "DOWN"
+            if self.enable_static_poses and is_stationary:
+                # Check for Thumbs Up
+                if self.is_thumbs_up(hand):
+                    last_thumb = self._last_trigger_frame.get(key + "_thumb", -9999)
+                    if (self._frame_index - last_thumb) > self.cooldown_frames:
+                        self._last_trigger_frame[key + "_thumb"] = self._frame_index
+                        return "THUMBS_UP"
+
+                # Check for Finger Count Gestures
+                fingers = self.count_extended_fingers(hand)
+                if fingers >= 0:
+                    hist_f = self._histories_fingers.setdefault(key, deque(maxlen=4))
+                    hist_f.append(fingers)
+
+                    if len(hist_f) >= 3:
+                        from collections import Counter
+                        count_freq = Counter(hist_f)
+                        most_common, freq = count_freq.most_common(1)[0]
+                        if freq >= 3:
+                            last_finger = self._last_trigger_frame.get(key + "_finger", -9999)
+                            if (self._frame_index - last_finger) > self.cooldown_frames:
+                                gesture_map = {
+                                    0: "CLOSED_FIST",
+                                    1: "ONE_FINGER",
+                                    2: "TWO_FINGERS",
+                                    3: "THREE_FINGERS",
+                                    4: "FOUR_FINGERS",
+                                    5: "FIVE_FINGERS"
+                                }
+                                self._last_trigger_frame[key + "_finger"] = self._frame_index
+                                return gesture_map[most_common]
 
         return None
 

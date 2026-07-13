@@ -69,6 +69,8 @@ Module.register("MMM-LuminaDashboard", {
         this.activeSection = -1; 
         this.landingSelectedIndex = 0; // Current selection index on landing page (0 - 5)
         this.lastActiveSection = -1;
+        this.lastRenderedSection = -2;
+        this.activeSectionChanged = false;
         this.lastUser = null;
         this.lastAgendaStr = "";
         this.lastNewsStr = "";
@@ -185,11 +187,16 @@ Module.register("MMM-LuminaDashboard", {
     // Establishes WebSocket channel to python core
     connectToCoreOSDaemon: function() {
         const self = this;
-        this.socket = new WebSocket(this.config.websocketUrl);
+        this.coreSocket = new WebSocket(this.config.websocketUrl);
 
-        this.socket.onmessage = function(event) {
+        this.coreSocket.onmessage = function(event) {
             const payload = JSON.parse(event.data);
             let shouldUpdateDom = false;
+            
+            // Debug log to verify receipt of websocket packages
+            if (payload.gestures && payload.gestures.activeGesture !== "NONE") {
+                console.log("[LUMINA WS DEBUG] Received active gesture packet:", JSON.stringify(payload.gestures));
+            }
             
             // Map live high-frequency biometrics
             if (payload.biometrics) {
@@ -218,7 +225,12 @@ Module.register("MMM-LuminaDashboard", {
                         self.showGreetingPopup(payload.identity.currentUser);
                     }
                     self.fetchHistoricalSummary();
-                    shouldUpdateDom = true;
+                    
+                    const wasRecognized = prevUser && prevUser !== "Searching..." && prevUser !== "Guest" && prevUser !== "";
+                    const isRecognized = payload.identity.currentUser && payload.identity.currentUser !== "Searching..." && payload.identity.currentUser !== "Guest" && payload.identity.currentUser !== "";
+                    if (isRecognized || wasRecognized) {
+                        shouldUpdateDom = true;
+                    }
                 }
             }
             
@@ -261,7 +273,7 @@ Module.register("MMM-LuminaDashboard", {
             }
         };
 
-        this.socket.onclose = function() {
+        this.coreSocket.onclose = function() {
             setTimeout(() => { self.connectToCoreOSDaemon(); }, 5000);
         };
     },
@@ -307,6 +319,11 @@ Module.register("MMM-LuminaDashboard", {
                 userNameVal.innerText = payload.identity.currentUser;
             }
 
+            const valUser = wrapper.querySelector(".val-user");
+            if (valUser && payload.identity) {
+                valUser.innerHTML = `${payload.identity.currentUser} <span class="status-dot green"></span>`;
+            }
+
             const heartVal = wrapper.querySelector(".status-heart-val");
             if (heartVal && payload.biometrics) {
                 let heartDisplay = payload.biometrics.bpm;
@@ -319,6 +336,17 @@ Module.register("MMM-LuminaDashboard", {
             const gestureVal = wrapper.querySelector(".status-gesture-val");
             if (gestureVal && payload.gestures) {
                 gestureVal.innerText = payload.gestures.activeGesture === "NONE" ? "READY" : payload.gestures.activeGesture;
+            }
+
+            const greetingEl = document.querySelector(".greeting-text");
+            if (greetingEl && payload.identity) {
+                const now = new Date();
+                const hour = now.getHours();
+                let greeting = "Good Morning";
+                if (hour >= 12 && hour < 17) greeting = "Good Afternoon";
+                else if (hour >= 17) greeting = "Good Evening";
+                const username = payload.identity.currentUser && payload.identity.currentUser !== "Searching..." && payload.identity.currentUser !== "Guest" ? payload.identity.currentUser : "Dawgy";
+                greetingEl.innerText = `${greeting}, ${username}`;
             }
         }
 
@@ -448,6 +476,7 @@ Module.register("MMM-LuminaDashboard", {
 
     handleIncomingGesture: function(gesture) {
         if (!gesture || gesture === "NONE") {
+            // Reset last gesture tracking so the same gesture can fire again after a pause
             this.lastReceivedGesture = "NONE";
             return;
         }
@@ -458,8 +487,8 @@ Module.register("MMM-LuminaDashboard", {
         }
 
         const now = Date.now();
-        // Cooldown of 600ms between any two active gesture actions to prevent flickering and double triggers
-        if (now - this.lastGestureTime < 600) {
+        // Cooldown of 350ms between any two active gesture actions to prevent double triggers
+        if (now - this.lastGestureTime < 350) {
             return;
         }
 
@@ -473,37 +502,39 @@ Module.register("MMM-LuminaDashboard", {
 
         let shouldUpdate = false;
         
-        // Closed Fist or Thumbs Up maps to "Go Back" / Home
+        // Static pose fallbacks
         if (gesture === "CLOSED_FIST" || gesture === "THUMBS_UP") {
-            this.activeSection = -1;
-            shouldUpdate = true;
+            if (this.activeSection !== -1) {
+                this.activeSection = -1;
+                shouldUpdate = true;
+            }
+        } else if (gesture === "OPEN_PALM" || gesture === "FIVE_FINGERS") {
+            if (this.activeSection === -1) {
+                this.activeSection = this.landingSelectedIndex;
+                shouldUpdate = true;
+            }
         } else if (this.activeSection === -1) {
-            // Swipe Left / Right / Up / Down moves selection between cards
+            // Landing page overview: Left/Right swipes move selection, Up/Down swipes open/enter
             if (gesture === "SWIPE_LEFT") {
                 this.landingSelectedIndex = (this.landingSelectedIndex - 1 + 6) % 6;
                 shouldUpdate = true;
             } else if (gesture === "SWIPE_RIGHT") {
                 this.landingSelectedIndex = (this.landingSelectedIndex + 1) % 6;
                 shouldUpdate = true;
-            } else if (gesture === "SWIPE_UP") {
-                this.landingSelectedIndex = (this.landingSelectedIndex - 3 + 6) % 6;
-                shouldUpdate = true;
-            } else if (gesture === "SWIPE_DOWN") {
-                this.landingSelectedIndex = (this.landingSelectedIndex + 3) % 6;
-                shouldUpdate = true;
-            } else if (gesture === "OPEN_PALM" || gesture === "FIVE_FINGERS") {
+            } else if (gesture === "SWIPE_UP" || gesture === "SWIPE_DOWN") {
                 this.activeSection = this.landingSelectedIndex;
                 shouldUpdate = true;
-            } else if (gesture === "ONE_FINGER" || gesture === "POINT") {
-                console.log("[LUMINA HUD ACTION] Point Gesture: Scroll action activated");
             }
         } else {
-            // Fullscreen scrolling or cycling gestures
-            if (gesture === "SWIPE_LEFT" || gesture === "SWIPE_UP") {
+            // Fullscreen sub-section: Left/Right swipes cycle pages, Up/Down swipes return home
+            if (gesture === "SWIPE_LEFT") {
                 this.activeSection = (this.activeSection - 1 + 6) % 6;
                 shouldUpdate = true;
-            } else if (gesture === "SWIPE_RIGHT" || gesture === "SWIPE_DOWN") {
+            } else if (gesture === "SWIPE_RIGHT") {
                 this.activeSection = (this.activeSection + 1) % 6;
+                shouldUpdate = true;
+            } else if (gesture === "SWIPE_UP" || gesture === "SWIPE_DOWN") {
+                this.activeSection = -1;
                 shouldUpdate = true;
             }
         }
@@ -516,6 +547,14 @@ Module.register("MMM-LuminaDashboard", {
     // Dynamic rendering generator
     getDom: function() {
         const self = this;
+
+        // Determine if the active section changed since the last getDom execution
+        if (this.activeSection !== this.lastRenderedSection) {
+            this.activeSectionChanged = true;
+            this.lastRenderedSection = this.activeSection;
+        } else {
+            this.activeSectionChanged = false;
+        }
 
         // Eco Sleep shroud cover
         if (this.gestureState.power_state === "SLEEP") {
@@ -634,7 +673,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for LANDING PAGE Tab (Sleek 3-column layout)
     buildLandingPageSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container animated-fade-in";
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
 
         const now = new Date();
         let hours = now.getHours();
@@ -873,7 +912,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for CALENDAR Tab (Sleek CSS monthly grid calendar + agenda split view)
     buildCalendarSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container animated-fade-in";
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
         container.style.display = "flex";
         container.style.flexDirection = "row";
         container.style.gap = "30px";
@@ -1013,7 +1052,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for SCHEDULE Tab (Detailed timeline of agenda tasks)
     buildScheduleSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container animated-fade-in";
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
 
         let agendaListHTML = "";
         if (this.agendaState && this.agendaState.length > 0) {
@@ -1052,7 +1091,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for HEALTH Tab
     buildHealthSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container animated-fade-in";
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
 
         let heartDisplay = this.biometricState.bpm;
         if (typeof heartDisplay === "number") {
@@ -1212,7 +1251,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for NEWS Tab
     buildNewsSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container animated-fade-in";
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
 
         let newsHTML = "";
         if (this.newsState && this.newsState.length > 0) {
@@ -1249,7 +1288,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for ANALYTICS Tab
     buildAnalyticsSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container animated-fade-in";
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
 
         const username = this.identityState.currentUser && this.identityState.currentUser !== "Searching..." && this.identityState.currentUser !== "Guest" ? this.identityState.currentUser : "Dawgy";
         let avgHeart = "72.0 BPM";
@@ -1312,7 +1351,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for SETTINGS Tab (Dynamic view matching graphite style)
     buildSettingsSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container animated-fade-in";
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
         container.style.width = "100%";
         container.style.height = "100%";
         

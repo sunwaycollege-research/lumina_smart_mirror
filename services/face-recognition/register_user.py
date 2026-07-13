@@ -7,9 +7,14 @@ import re
 import face_recognition
 from typing import List, Dict, Any, Optional
 
-from face_detector import FaceDetector
-from face_recognizer import FaceRecognizer
-from profile_manager import ProfileManager
+try:
+    from face_detector import FaceDetector
+    from face_recognizer import FaceRecognizer
+    from profile_manager import ProfileManager
+except ImportError:
+    from .face_detector import FaceDetector
+    from .face_recognizer import FaceRecognizer
+    from .profile_manager import ProfileManager
 
 # Configure logger
 logger = logging.getLogger(__name__)

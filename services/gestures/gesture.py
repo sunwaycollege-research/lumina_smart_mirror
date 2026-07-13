@@ -74,7 +74,10 @@ def main() -> None:
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received - exiting gesture loop")
     finally:
-        mp.close()
+        try:
+            mp.close()
+        except BaseException:
+            pass
         logger.info("Gesture service stopped")
 
 

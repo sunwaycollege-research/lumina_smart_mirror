@@ -39,7 +39,16 @@ class VoskEngine:
             # Dynamically resolve relative to the workspace root
             current_dir = Path(__file__).resolve().parent
             workspace_dir = current_dir.parent.parent
-            model_path = str(workspace_dir / "vosk-model-small-en-us-0.15" / "vosk-model-small-en-us-0.15")
+            # Try the root model directory first (model files directly inside)
+            candidate = workspace_dir / "vosk-model-small-en-us-0.15"
+            # Check for the conf/ subdirectory which indicates model files are present
+            if (candidate / "conf").exists():
+                model_path = str(candidate)
+            elif (candidate / "vosk-model-small-en-us-0.15").exists():
+                # Fallback: nested directory structure
+                model_path = str(candidate / "vosk-model-small-en-us-0.15")
+            else:
+                model_path = str(candidate)
         self.model_path = model_path
         self.sample_rate = sample_rate
         self.logger = logging.getLogger(self.__class__.__name__)

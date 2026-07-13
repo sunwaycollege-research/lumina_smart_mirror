@@ -347,12 +347,18 @@ class MediapipeHandler:
         the MediaPipe HandLandmarker to free resources.
         """
         if self._hand_landmarker is not None:
-            self._hand_landmarker.close()
-            self._hand_landmarker = None
+            try:
+                self._hand_landmarker.close()
+            except BaseException:
+                pass
+            finally:
+                self._hand_landmarker = None
 
         if self.capture is not None:
             try:
                 self.capture.release()
+            except BaseException:
+                pass
             finally:
                 self.capture = None
 

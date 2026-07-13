@@ -6,9 +6,14 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from face_detector import FaceDetector
-from face_recognizer import FaceRecognizer
-from profile_manager import ProfileManager
+try:
+    from face_detector import FaceDetector
+    from face_recognizer import FaceRecognizer
+    from profile_manager import ProfileManager
+except ImportError:
+    from .face_detector import FaceDetector
+    from .face_recognizer import FaceRecognizer
+    from .profile_manager import ProfileManager
 
 try:
     from logger import get_logger

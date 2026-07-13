@@ -13,8 +13,18 @@ import os
 import time
 from pathlib import Path
 
-from services.voice.vosk_engine import VoskEngine
-from services.voice.command_parser import CommandParser
+try:
+    # Support package execution context (e.g. python -m services.voice.voice)
+    from services.voice.vosk_engine import VoskEngine
+    from services.voice.command_parser import CommandParser
+except ImportError:
+    # Support direct script execution (e.g. python voice.py from within services/voice/)
+    try:
+        from vosk_engine import VoskEngine
+        from command_parser import CommandParser
+    except ImportError:
+        from .vosk_engine import VoskEngine
+        from .command_parser import CommandParser
 
 
 def main() -> None:
