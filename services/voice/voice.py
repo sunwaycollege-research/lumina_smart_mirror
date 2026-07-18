@@ -1,77 +1,44 @@
-#!/usr/bin/env python3
 """Voice recognition service entry point.
 
-This module initializes the voice recognition workflow and orchestrates the
-components that will be added later.
+Per services/voice/README.md:
+Microphone -> Vosk speech recognition -> Command parsing -> Output command result
+
+This orchestrates VoskEngine and CommandParser. Both are currently minimal
+placeholders (see their docstrings), so this entry point is likewise a
+skeleton — it wires the pieces together but does not yet do real speech
+recognition end-to-end.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-import time
-from pathlib import Path
 
-try:
-    # Support package execution context (e.g. python -m services.voice.voice)
-    from services.voice.vosk_engine import VoskEngine
-    from services.voice.command_parser import CommandParser
-except ImportError:
-    # Support direct script execution (e.g. python voice.py from within services/voice/)
-    try:
-        from vosk_engine import VoskEngine
-        from command_parser import CommandParser
-    except ImportError:
-        from .vosk_engine import VoskEngine
-        from .command_parser import CommandParser
+from vosk_engine import VoskEngine
+from command_parser import CommandParser
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("VoiceService")
 
 
-def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    logger = logging.getLogger("voice_service")
+class VoiceService:
+    def __init__(self, model_path: str | None = None):
+        self.engine = VoskEngine(model_path=model_path)
+        self.parser = CommandParser()
 
-    logger.info("Starting voice recognition service")
+    def start(self) -> None:
+        logger.info("Starting voice service (placeholder — no live transcription yet).")
+        self.engine.start()
 
-    engine = VoskEngine()
-    parser = CommandParser()
+    def stop(self) -> None:
+        self.engine.stop()
 
-    logger.info("Voice service initialized with VoskEngine and CommandParser")
-
-    command_file = Path(os.environ.get("VOICE_COMMAND_FILE", "/tmp/voice.json"))
-
-    try:
-        for transcript in engine.transcribe_microphone():
-            if not transcript:
-                continue
-
-            print(f"Recognized: {transcript}")
-            command = parser.parse(transcript)
-            if command:
-                print(f"Mapped command: {command}")
-                _save_command(command_file, command, logger)
-            else:
-                logger.debug("Unsupported phrase ignored: %s", transcript)
-    except KeyboardInterrupt:
-        logger.info("Voice service shutdown requested")
-    except Exception as error:
-        logger.exception("Voice service error: %s", error)
-
-
-def _save_command(command_file: Path, command: str, logger: logging.Logger) -> None:
-    payload = {
-        "command": command,
-        "timestamp": int(time.time()),
-    }
-
-    try:
-        command_file.parent.mkdir(parents=True, exist_ok=True)
-        with command_file.open("w", encoding="utf-8") as handle:
-            json.dump(payload, handle)
-            handle.write(os.linesep)
-    except OSError as error:
-        logger.error("Failed to write voice command to %s: %s", command_file, error)
+    def poll_command(self) -> str | None:
+        """Fetch the latest transcript and try to resolve it to a command."""
+        transcript = self.engine.get_transcript()
+        return self.parser.parse(transcript)
 
 
 if __name__ == "__main__":
-    main()
+    service = VoiceService()
+    service.start()
+    logger.info("Voice service running as a stub. Implement vosk_engine.py to enable real transcription.")

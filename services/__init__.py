@@ -1,1 +1,0 @@
-# Lumina Smart Mirror - Services

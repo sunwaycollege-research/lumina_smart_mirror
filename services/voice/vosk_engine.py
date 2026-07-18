@@ -1,146 +1,41 @@
-#!/usr/bin/env python3
-"""Vosk transcription engine for offline microphone speech recognition.
+"""Placeholder for the Vosk transcription engine.
 
-This module provides a skeleton implementation for microphone transcription
-using Vosk. It listens on the default system microphone, converts recognized
-speech into lowercase text, and yields recognized phrases as they are
-produced.
+Per services/voice/README.md, this module is intentionally minimal for now:
+it defines the shape of the transcription engine (start/stop/get_transcript)
+without wiring up actual microphone capture or Vosk model loading yet.
 
-Requirements:
-- Install Vosk: `pip install vosk`
-- Install sounddevice for microphone input: `pip install sounddevice`
-- Download a compatible Vosk model from:
-  https://alphacephei.com/vosk/models
-- Extract the model and configure `model_path` to point at the extracted
-  model directory, for example:
-      ~/.vosk/model
-
-Assumptions and limitations:
-- Only offline recognition is supported.
-- The implementation uses a 16 kHz mono microphone stream.
-- Ambient noise and microphone quality may affect recognition accuracy.
-- This class does not implement command routing or MagicMirror integration.
-- The Vosk model must be downloaded and configured before use.
+Next steps (see README.md):
+1. Implement microphone capture here.
+2. Add Vosk model loading and transcription.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
-from typing import Generator, Optional
+
+logger = logging.getLogger("VoskEngine")
 
 
 class VoskEngine:
-    """Vosk engine responsible for microphone transcription."""
+    """Skeleton transcription engine. Does not yet perform real speech-to-text."""
 
-    def __init__(self, model_path: Optional[str] = None, sample_rate: int = 16000) -> None:
-        if not model_path:
-            # Dynamically resolve relative to the workspace root
-            current_dir = Path(__file__).resolve().parent
-            workspace_dir = current_dir.parent.parent
-            # Try the root model directory first (model files directly inside)
-            candidate = workspace_dir / "vosk-model-small-en-us-0.15"
-            # Check for the conf/ subdirectory which indicates model files are present
-            if (candidate / "conf").exists():
-                model_path = str(candidate)
-            elif (candidate / "vosk-model-small-en-us-0.15").exists():
-                # Fallback: nested directory structure
-                model_path = str(candidate / "vosk-model-small-en-us-0.15")
-            else:
-                model_path = str(candidate)
+    def __init__(self, model_path: str | None = None):
         self.model_path = model_path
-        self.sample_rate = sample_rate
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self._model = None
-        self._ensure_model()
+        self._running = False
 
-    def _ensure_model(self) -> None:
-        model_dir = Path(self.model_path)
-        if not model_dir.exists() or not model_dir.is_dir():
-            raise RuntimeError(
-                "Vosk model not found. "
-                f"Please download a model from https://alphacephei.com/vosk/models "
-                f"and extract it to '{self.model_path}', or pass a valid `model_path`."
-            )
+    def start(self) -> None:
+        """Start listening/transcribing. Not yet implemented."""
+        self._running = True
+        logger.warning("VoskEngine.start() called, but transcription is not yet implemented.")
 
-        try:
-            from vosk import Model
-        except ImportError as error:
-            raise ImportError(
-                "The vosk package is required for VoskEngine: install it with `pip install vosk`."
-            ) from error
+    def stop(self) -> None:
+        """Stop listening/transcribing."""
+        self._running = False
 
-        self._model = Model(str(model_dir))
-        self.logger.info("Loaded Vosk model from %s", self.model_path)
+    def get_transcript(self) -> str:
+        """Return the most recent transcript. Not yet implemented."""
+        return ""
 
-    def transcribe_microphone(self) -> Generator[str, None, None]:
-        """Continuously listen to the default microphone and yield recognized phrases.
-
-        Yields:
-            Lowercase recognized speech phrases.
-
-        Notes:
-            - Silence is handled gracefully by continuing the listening loop.
-            - Recognition errors are logged and do not stop the service.
-        """
-        try:
-            import sounddevice as sd
-        except ImportError as error:
-            raise ImportError(
-                "sounddevice is required for microphone input: install it with `pip install sounddevice`."
-            ) from error
-
-        try:
-            from vosk import KaldiRecognizer
-        except ImportError as error:
-            raise ImportError(
-                "The vosk package is required for VoskEngine: install it with `pip install vosk`."
-            ) from error
-
-        if self._model is None:
-            raise RuntimeError("Vosk model has not been loaded")
-
-        recognizer = KaldiRecognizer(self._model, float(self.sample_rate))
-        recognizer.SetWords(False)
-
-        self.logger.info("Starting microphone transcription on default audio device")
-
-        try:
-            with sd.RawInputStream(
-                samplerate=self.sample_rate,
-                blocksize=8000,
-                dtype="int16",
-                channels=1,
-            ) as stream:
-                while True:
-                    try:
-                        data, overflowed = stream.read(4000)
-                        if overflowed:
-                            self.logger.warning("Audio buffer overflow detected")
-                        if not data:
-                            continue
-
-                        if recognizer.AcceptWaveform(bytes(data)):
-                            result = recognizer.Result()
-                            phrase = self._extract_phrase(result)
-                            if phrase:
-                                yield phrase
-                    except Exception as error:
-                        self.logger.error("Recognition error: %s", error)
-                        continue
-        except Exception as error:
-            self.logger.error("Microphone input failed: %s", error)
-            raise
-
-    def _extract_phrase(self, result_json: str) -> Optional[str]:
-        try:
-            payload = json.loads(result_json)
-        except json.JSONDecodeError:
-            return None
-
-        text = payload.get("text")
-        if not text or not isinstance(text, str):
-            return None
-
-        return text.strip().lower()
+    @property
+    def is_running(self) -> bool:
+        return self._running

@@ -32,8 +32,63 @@ Limitations
 
 from __future__ import annotations
 
+import math
+import time
 from collections import deque
 from typing import Any, Dict, List, Optional
+
+
+class OneEuroFilter:
+    """Low-latency jitter filter for noisy real-time signals (Casiez, Roussel &
+    Vogel, 2012 - "1(euro) Filter"). This is the standard technique for smoothing
+    hand/pointer tracking specifically because it adapts to speed: it filters
+    hard when the hand is nearly still (killing jitter) and filters less when
+    the hand is moving fast (killing lag), instead of a fixed moving-average
+    which is always a lag/smoothness tradeoff compromise.
+
+    This is the direct fix for "gestures aren't smooth" - raw per-frame wrist
+    coordinates from MediaPipe are noisy even when the hand is stationary, and
+    that noise was being diffed directly for swipe detection.
+    """
+
+    def __init__(self, min_cutoff: float = 1.0, beta: float = 0.3, d_cutoff: float = 1.0):
+        self.min_cutoff = min_cutoff
+        self.beta = beta
+        self.d_cutoff = d_cutoff
+        self._x_prev: Optional[float] = None
+        self._dx_prev: float = 0.0
+        self._t_prev: Optional[float] = None
+
+    @staticmethod
+    def _alpha(cutoff: float, dt: float) -> float:
+        tau = 1.0 / (2 * math.pi * cutoff)
+        return 1.0 / (1.0 + tau / dt)
+
+    def filter(self, x: float, t: Optional[float] = None) -> float:
+        t = time.monotonic() if t is None else t
+
+        if self._t_prev is None:
+            self._t_prev = t
+            self._x_prev = x
+            self._dx_prev = 0.0
+            return x
+
+        dt = max(1e-6, t - self._t_prev)
+
+        # Estimate the derivative (speed) first, lightly smoothed.
+        dx = (x - self._x_prev) / dt
+        a_d = self._alpha(self.d_cutoff, dt)
+        dx_hat = a_d * dx + (1 - a_d) * self._dx_prev
+
+        # Cutoff adapts to speed: faster movement -> higher cutoff -> less lag.
+        cutoff = self.min_cutoff + self.beta * abs(dx_hat)
+        a = self._alpha(cutoff, dt)
+        x_hat = a * x + (1 - a) * self._x_prev
+
+        self._x_prev = x_hat
+        self._dx_prev = dx_hat
+        self._t_prev = t
+        return x_hat
 
 
 class GestureDetector:
@@ -79,6 +134,12 @@ class GestureDetector:
 
         # Per-hand history of wrist y positions (normalized).
         self._histories_y: Dict[str, deque[float]] = {}
+
+        # Per-hand jitter filters for wrist x/y (see OneEuroFilter docstring).
+        # min_cutoff tuned low so a still hand stays rock-steady; beta tuned so
+        # a real swipe still tracks with near-zero added lag.
+        self._filters_x: Dict[str, OneEuroFilter] = {}
+        self._filters_y: Dict[str, OneEuroFilter] = {}
 
         # Per-hand history of extended finger counts.
         self._histories_fingers: Dict[str, deque[int]] = {}
@@ -177,6 +238,8 @@ class GestureDetector:
             self._histories_x.clear()
             self._histories_y.clear()
             self._histories_fingers.clear()
+            self._filters_x.clear()
+            self._filters_y.clear()
             return None
 
         # Clear histories for hands that are no longer detected
@@ -187,18 +250,26 @@ class GestureDetector:
                 self._histories_y[key].clear()
                 if key in self._histories_fingers:
                     self._histories_fingers[key].clear()
+                self._filters_x.pop(key, None)
+                self._filters_y.pop(key, None)
 
         # Check each detected hand
         for idx, hand in enumerate(hands):
             key = self._hand_key(hand, idx)
 
-            # 1. Update wrist history first
+            # 1. Update wrist history first (smoothed, not raw)
             try:
                 wrist = hand.get("landmarks", [])[0]
-                wrist_x = float(wrist.get("x"))
-                wrist_y = float(wrist.get("y"))
+                raw_x = float(wrist.get("x"))
+                raw_y = float(wrist.get("y"))
             except Exception:
                 continue
+
+            filt_x = self._filters_x.setdefault(key, OneEuroFilter(min_cutoff=1.0, beta=0.3))
+            filt_y = self._filters_y.setdefault(key, OneEuroFilter(min_cutoff=1.0, beta=0.3))
+            now = time.monotonic()
+            wrist_x = filt_x.filter(raw_x, now)
+            wrist_y = filt_y.filter(raw_y, now)
 
             hist_x = self._histories_x.setdefault(key, deque(maxlen=self.window_size))
             hist_y = self._histories_y.setdefault(key, deque(maxlen=self.window_size))

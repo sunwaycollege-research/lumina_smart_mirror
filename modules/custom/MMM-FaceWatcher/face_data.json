@@ -1,7 +1,7 @@
 {
-	"recognized": false,
-	"user": "Unknown",
+	"recognized": true,
+	"user": "Sulav",
 	"theme": "dark",
-	"role": "Guest",
-	"welcomeMessage": "Hello! Register to personalize."
+	"role": "Student",
+	"welcomeMessage": "Sup son"
 }

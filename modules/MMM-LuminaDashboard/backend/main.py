@@ -28,7 +28,6 @@ logger = get_logger("LuminaBackend")
 
 app = FastAPI(title="Lumina Smart Mirror OS Engine v2")
 
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

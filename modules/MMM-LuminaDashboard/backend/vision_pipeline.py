@@ -72,7 +72,12 @@ class LuminaVisionPipeline:
                 logger.warning(f"MediaPipe FaceMesh not available, falling back to OpenCV Haar Cascade face detection: {e2}")
         
         # rPPG State Parameters
-        self.rppg_buffer = []
+        # CHROM (de Haan & Jeanne, 2013) needs all three channels, not just green -
+        # it cancels motion/lighting artifacts by combining them, which a single
+        # green-channel signal can't do.
+        self.r_buffer = []
+        self.g_buffer = []
+        self.b_buffer = []
         self.timestamps = []
         self.buffer_max_size = 150  # ~5 seconds at 30 fps
         self.last_valid_bpm = 72.4  # Persistent physiological baseline
@@ -103,8 +108,8 @@ class LuminaVisionPipeline:
         mask = np.zeros((h, w), dtype=np.uint8)
         cv2.fillConvexPoly(mask, points, 255)
         
-        mean_channels = cv2.mean(frame, mask=mask)
-        return mean_channels[1]  # Return the Green channel value (highest absorption variance for hemoglobin)
+        mean_channels = cv2.mean(frame, mask=mask)  # OpenCV order: (B, G, R, alpha)
+        return mean_channels[2], mean_channels[1], mean_channels[0]  # (R, G, B)
 
     def _extract_skin_signal_simple(self, frame, landmarks):
         """Simple skin signal extraction when detailed landmark indices aren't available."""
@@ -120,23 +125,38 @@ class LuminaVisionPipeline:
             y2 = min(h, cy + roi_size)
             roi = frame[y1:y2, x1:x2]
             if roi.size > 0:
-                return np.mean(roi[:, :, 1])  # Green channel
+                # roi is BGR (OpenCV order)
+                b_mean = np.mean(roi[:, :, 0])
+                g_mean = np.mean(roi[:, :, 1])
+                r_mean = np.mean(roi[:, :, 2])
+                return r_mean, g_mean, b_mean
         except Exception:
             pass
-        return 128.0  # Fallback default
+        return 128.0, 128.0, 128.0  # Fallback default (R, G, B)
 
     def calculate_rppg_bpm(self) -> float:
-        """Applies a bandpass filter and Fast Fourier Transform to find the pulse rate."""
+        """Recovers pulse rate using the CHROM algorithm (de Haan & Jeanne, 2013).
+
+        CHROM is the standard rPPG baseline: instead of reading pulse off a single
+        (noisy) green-channel signal, it linearly combines all three color channels
+        into a chrominance signal that is far less sensitive to motion and lighting
+        changes, which are exactly the two things that make single-channel green
+        extraction unreliable on a device like this (person moves, ambient light
+        shifts as they walk up to the mirror, etc).
+        """
         import random
-        if len(self.rppg_buffer) < 40:
+        if len(self.r_buffer) < 40:
             # If buffer is still building up, return simulated fluctuation around last valid
             return round(self.last_valid_bpm + random.uniform(-0.4, 0.4), 1)
-            
-        signal = np.array(self.rppg_buffer)
+
+        r = np.array(self.r_buffer, dtype=np.float64)
+        g = np.array(self.g_buffer, dtype=np.float64)
+        b = np.array(self.b_buffer, dtype=np.float64)
+
         fps = len(self.timestamps) / (self.timestamps[-1] - self.timestamps[0]) if (self.timestamps[-1] - self.timestamps[0]) > 0 else 30.0
         if fps <= 0:
             fps = 30.0
-        
+
         # Apply a 2nd order Butterworth bandpass filter (0.75Hz to 3.3Hz -> 45 to 200 BPM)
         nyq = 0.5 * fps
         low = 0.75 / nyq
@@ -146,13 +166,38 @@ class LuminaVisionPipeline:
         if low >= 1.0 or high >= 1.0 or low <= 0 or high <= 0 or low >= high:
             return round(self.last_valid_bpm + random.uniform(-0.3, 0.3), 1)
 
-        b, a = butter(2, [low, high], btype='band')
-        
         try:
-            filtered_signal = filtfilt(b, a, signal)
-            fft_data = np.abs(np.fft.rfft(filtered_signal))
-            freqs = np.fft.rfftfreq(len(filtered_signal), d=1.0/fps)
-            
+            # --- CHROM: normalize each channel by its own temporal mean ---
+            # This removes the DC / overall brightness component so the linear
+            # combination below isolates color *variation* (the pulse) rather
+            # than absolute skin tone or ambient light level.
+            r_mean, g_mean, b_mean = np.mean(r), np.mean(g), np.mean(b)
+            if r_mean <= 0 or g_mean <= 0 or b_mean <= 0:
+                return round(self.last_valid_bpm + random.uniform(-0.3, 0.3), 1)
+
+            r_n = r / r_mean
+            g_n = g / g_mean
+            b_n = b / b_mean
+
+            # Chrominance signals (standard CHROM linear combination)
+            x_s = 3.0 * r_n - 2.0 * g_n
+            y_s = 1.5 * r_n + g_n - 1.5 * b_n
+
+            b_coef, a_coef = butter(2, [low, high], btype='band')
+            x_f = filtfilt(b_coef, a_coef, x_s)
+            y_f = filtfilt(b_coef, a_coef, y_s)
+
+            # Alpha-tune and combine the two chrominance signals into the final
+            # pulse signal S - this cancels the specular/motion component that
+            # x_f and y_f share, leaving mostly the blood-volume pulse.
+            std_x = np.std(x_f)
+            std_y = np.std(y_f)
+            alpha = std_x / std_y if std_y > 1e-8 else 1.0
+            pulse_signal = x_f - alpha * y_f
+
+            fft_data = np.abs(np.fft.rfft(pulse_signal))
+            freqs = np.fft.rfftfreq(len(pulse_signal), d=1.0 / fps)
+
             # Bound search space to valid human pulse constraints
             valid_idx = np.where((freqs >= 0.75) & (freqs <= 3.0))[0]
             if len(valid_idx) == 0:
@@ -238,13 +283,17 @@ class LuminaVisionPipeline:
                 
             landmarks = results.multi_face_landmarks[0].landmark
         
-        # Compute rPPG data stream inputs
-        green_val = self.extract_skin_signal(frame, landmarks)
-        self.rppg_buffer.append(green_val)
+        # Compute rPPG data stream inputs (all three channels, needed for CHROM)
+        r_val, g_val, b_val = self.extract_skin_signal(frame, landmarks)
+        self.r_buffer.append(r_val)
+        self.g_buffer.append(g_val)
+        self.b_buffer.append(b_val)
         self.timestamps.append(time.time())
         
-        if len(self.rppg_buffer) > self.buffer_max_size:
-            self.rppg_buffer.pop(0)
+        if len(self.r_buffer) > self.buffer_max_size:
+            self.r_buffer.pop(0)
+            self.g_buffer.pop(0)
+            self.b_buffer.pop(0)
             self.timestamps.pop(0)
             
         bpm = self.calculate_rppg_bpm()
