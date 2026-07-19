@@ -577,6 +577,13 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
     current_user_name = "Searching..."
     identity_confidence = 0
     last_user_check_time = 0.0
+
+    # Grace period and streak tracking
+    miss_count = 0
+    max_misses = 4  # 4 checks * 1.5s = 6.0s grace period
+    recognition_streak = 0
+    required_streak = 2  # Require 2 consecutive recognitions to log in a user
+    last_candidate = None
     
     # FPS tracking variables
     fps_start_time = time.time()
@@ -700,12 +707,36 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                             faces = face_cascade.detectMultiScale(
                                 gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60)
                             )
+                            
+                            detected_user = "Unknown"
+                            is_recognized = False
+                            
                             if len(faces) > 0:
+                                # A face is detected. Reset miss count because a face is seen.
+                                miss_count = 0
+                                
                                 result = await asyncio.to_thread(face_recognizer.recognize_face, frame, faces[0], 0.4)
                                 if result.get("recognized"):
-                                    new_user = result["user"]
-                                    if new_user != recognized_user:
-                                        recognized_user = new_user
+                                    detected_user = result["user"]
+                                    is_recognized = True
+                                else:
+                                    detected_user = "Guest"
+                            else:
+                                detected_user = "Unknown"
+                            
+                            # Handle state transitions based on detected_user
+                            if is_recognized:
+                                # We recognized a known user
+                                if detected_user == last_candidate:
+                                    recognition_streak += 1
+                                else:
+                                    last_candidate = detected_user
+                                    recognition_streak = 1
+                                    
+                                if recognition_streak >= required_streak:
+                                    if recognized_user != detected_user:
+                                        logger.info(f"WebSocket User login transition: '{recognized_user}' -> '{detected_user}'")
+                                        recognized_user = detected_user
                                         prof = await asyncio.to_thread(profile_manager.get_active_profile, recognized_user)
                                         current_user_name = prof.get("name", recognized_user)
                                         
@@ -718,7 +749,15 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                                         except Exception:
                                             pass
                                     identity_confidence = 98
-                                else:
+                                    recognition_streak = 0
+                                    last_candidate = None
+                                    
+                            elif detected_user == "Guest":
+                                # Face detected but unrecognized
+                                recognition_streak = 0
+                                last_candidate = None
+                                
+                                if recognized_user in ["Unknown", "Guest"]:
                                     if recognized_user != "Guest":
                                         recognized_user = "Guest"
                                         current_user_name = "Guest"
@@ -731,19 +770,29 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                                         except Exception:
                                             pass
                                     identity_confidence = 0
-                            else:
+                                # If we are already logged in as a known user, we keep that user active while a face is present.
+                                
+                            else:  # detected_user == "Unknown" (no face detected at all)
+                                recognition_streak = 0
+                                last_candidate = None
+                                
                                 if recognized_user != "Unknown":
-                                    recognized_user = "Unknown"
-                                    current_user_name = "Searching..."
-                                    try:
-                                        face_watcher_path = os.path.join(project_root, "modules", "custom", "MMM-FaceWatcher", "face_data.json")
-                                        os.makedirs(os.path.dirname(face_watcher_path), exist_ok=True)
-                                        with open(face_watcher_path, "w") as f:
-                                            guest_profile = await asyncio.to_thread(profile_manager.get_active_profile, "Unknown")
-                                            json.dump(guest_profile, f, indent=4)
-                                    except Exception:
-                                        pass
-                                identity_confidence = 0
+                                    miss_count += 1
+                                    logger.info(f"Face absent. Miss count: {miss_count}/{max_misses}")
+                                    if miss_count >= max_misses:
+                                        logger.info(f"WebSocket User logged out due to absence: '{recognized_user}' -> 'Unknown'")
+                                        recognized_user = "Unknown"
+                                        current_user_name = "Searching..."
+                                        try:
+                                            face_watcher_path = os.path.join(project_root, "modules", "custom", "MMM-FaceWatcher", "face_data.json")
+                                            os.makedirs(os.path.dirname(face_watcher_path), exist_ok=True)
+                                            with open(face_watcher_path, "w") as f:
+                                                guest_profile = await asyncio.to_thread(profile_manager.get_active_profile, "Unknown")
+                                                json.dump(guest_profile, f, indent=4)
+                                        except Exception:
+                                            pass
+                                        identity_confidence = 0
+                                        miss_count = 0
                 else:
                     consecutive_failures += 1
                     if consecutive_failures >= 30:
