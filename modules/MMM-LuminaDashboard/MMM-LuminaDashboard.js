@@ -22,7 +22,21 @@ Module.register("MMM-LuminaDashboard", {
     // Default system connection properties
     defaults: {
         websocketUrl: "ws://127.0.0.1:8000/ws/dashboard/stream",
-        summaryApiUrl: "http://127.0.0.1:8000/api/dashboard/summary/Dawgy"
+        // Used to build BOTH the summary and news API calls below - previously
+        // those URLs were hardcoded to http://127.0.0.1:8000 in several
+        // places instead of reading from config, and summaryApiUrl (the old
+        // config key) was never actually read anywhere. Set this if your
+        // backend runs on a different host/port.
+        apiBaseUrl: "http://127.0.0.1:8000",
+        // Shown as the greeting name before any face is recognized, or if
+        // recognition is guessing/searching. Purely cosmetic - has no effect
+        // on which user's data gets queried (see currentUserKey below).
+        fallbackDisplayName: "there",
+        // Registry key (e.g. "Sulav", matching services/face-recognition/
+        // profiles/users.json) to fetch summary stats for when nobody's
+        // been recognized yet. Leave "" to just skip the summary fetch
+        // until someone is actually recognized, instead of guessing.
+        fallbackUsername: ""
     },
 
     // Inject our premium graphite styling sheets
@@ -51,7 +65,8 @@ Module.register("MMM-LuminaDashboard", {
         };
         this.lastReceivedGesture = "NONE";
         this.identityState = { 
-            currentUser: "Dawgy", 
+            currentUser: "there", 
+            currentUserKey: "",
             confidence: 98 
         };
         this.agendaState = [];
@@ -345,7 +360,7 @@ Module.register("MMM-LuminaDashboard", {
                 let greeting = "Good Morning";
                 if (hour >= 12 && hour < 17) greeting = "Good Afternoon";
                 else if (hour >= 17) greeting = "Good Evening";
-                const username = payload.identity.currentUser && payload.identity.currentUser !== "Searching..." && payload.identity.currentUser !== "Guest" ? payload.identity.currentUser : "Dawgy";
+                const username = payload.identity.currentUser && payload.identity.currentUser !== "Searching..." && payload.identity.currentUser !== "Guest" ? payload.identity.currentUser : this.config.fallbackDisplayName;
                 greetingEl.innerText = `${greeting}, ${username}`;
             }
         }
@@ -420,7 +435,7 @@ Module.register("MMM-LuminaDashboard", {
                 if (hour >= 12 && hour < 17) greeting = "Good Afternoon";
                 else if (hour >= 17) greeting = "Good Evening";
                 
-                const username = this.identityState.currentUser && this.identityState.currentUser !== "Searching..." && this.identityState.currentUser !== "Guest" ? this.identityState.currentUser : "Dawgy";
+                const username = this.identityState.currentUser && this.identityState.currentUser !== "Searching..." && this.identityState.currentUser !== "Guest" ? this.identityState.currentUser : this.config.fallbackDisplayName;
                 greetingEl.innerText = `${greeting}, ${username}`;
             }
         }
@@ -428,7 +443,18 @@ Module.register("MMM-LuminaDashboard", {
 
     // Fetches user profile analytics
     fetchHistoricalSummary: function() {
-        const username = this.identityState.currentUser && this.identityState.currentUser !== "Searching..." && this.identityState.currentUser !== "Guest" ? this.identityState.currentUser : "Dawgy";
+        // IMPORTANT: use currentUserKey (the raw registry key the backend
+        // actually logs metrics under, e.g. "Sulav"), NOT currentUser (the
+        // display name, e.g. "Dawgybey"). Using the display name here used
+        // to silently query a username that was never written to the DB,
+        // so summaries for anyone whose display name differs from their
+        // registry key always came back empty.
+        const username = this.identityState.currentUserKey || this.config.fallbackUsername;
+        if (!username) {
+            // Nobody recognized yet and no fallback configured - nothing
+            // valid to query, so don't fetch instead of guessing a name.
+            return;
+        }
         
         const now = Date.now();
         if (!this.summaryCache) this.summaryCache = {};
@@ -442,7 +468,7 @@ Module.register("MMM-LuminaDashboard", {
             return;
         }
 
-        const url = `http://127.0.0.1:8000/api/dashboard/summary/${username}`;
+        const url = `${this.config.apiBaseUrl}/api/dashboard/summary/${username}`;
         const self = this;
         fetch(url)
             .then(res => res.json())
@@ -459,7 +485,7 @@ Module.register("MMM-LuminaDashboard", {
 
     // Fetches live news feed
     fetchLiveNews: function() {
-        fetch("http://127.0.0.1:8000/api/dashboard/news")
+        fetch(`${this.config.apiBaseUrl}/api/dashboard/news`)
             .then(res => res.json())
             .then(data => {
                 const newsStr = JSON.stringify(data);
@@ -691,7 +717,7 @@ Module.register("MMM-LuminaDashboard", {
         if (hour >= 12 && hour < 17) greetText = "Good Afternoon";
         else if (hour >= 17) greetText = "Good Evening";
 
-        const username = this.identityState.currentUser && this.identityState.currentUser !== "Searching..." && this.identityState.currentUser !== "Guest" ? this.identityState.currentUser : "Dawgy";
+        const username = this.identityState.currentUser && this.identityState.currentUser !== "Searching..." && this.identityState.currentUser !== "Guest" ? this.identityState.currentUser : this.config.fallbackDisplayName;
         let heartDisplay = this.biometricState.bpm;
         if (typeof heartDisplay === "number") {
             heartDisplay = `${Math.round(heartDisplay)} BPM`;
@@ -1290,7 +1316,7 @@ Module.register("MMM-LuminaDashboard", {
         const container = document.createElement("div");
         container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
 
-        const username = this.identityState.currentUser && this.identityState.currentUser !== "Searching..." && this.identityState.currentUser !== "Guest" ? this.identityState.currentUser : "Dawgy";
+        const username = this.identityState.currentUser && this.identityState.currentUser !== "Searching..." && this.identityState.currentUser !== "Guest" ? this.identityState.currentUser : this.config.fallbackDisplayName;
         let avgHeart = "72.0 BPM";
         let pointsLogged = "N/A";
         if (this.historicalSummary) {

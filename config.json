@@ -1,0 +1,23 @@
+{
+	"calendar": {
+		"ical_url": "https://ics.calendarlabs.com/76/mm3137/US_Holidays.ics",
+		"_how_to_use_google_calendar": "Open Google Calendar > Settings (gear icon) > Settings for my calendars > pick your calendar > 'Integrate calendar'. Copy 'Public address in iCal format' if your calendar is public, or 'Secret address in iCal format' if it's private (treat that URL like a password - anyone with it can read your events). Paste whichever one you copied into ical_url above. No API key or OAuth needed."
+	},
+	"news": {
+		"primary_rss_url": "https://www.onlinekhabar.com/feed",
+		"fallback_rss_url": "https://feeds.bbci.co.uk/news/rss.xml",
+		"_note": "primary_rss_url is tried first - default is OnlineKhabar (Nepali-language, confirmed working). Swap in any RSS 2.0 feed URL you prefer, e.g. Kathmandu Post, The Himalayan Times, Setopati, BBC Nepali. fallback_rss_url is only used if the primary feed doesn't respond."
+	},
+	"gestures": {
+		"min_cutoff": 1.0,
+		"beta": 0.3,
+		"horizontal_threshold": 0.08,
+		"vertical_threshold": 0.08,
+		"cooldown_frames": 6,
+		"_note": "min_cutoff/beta tune the jitter filter: lower min_cutoff = steadier when your hand is still, higher beta = the filter reacts faster once you actually start swiping. horizontal/vertical_threshold control how far your hand must travel (as a fraction of the frame) to register a swipe - raise these if you get accidental triggers, lower them if swipes feel unresponsive. cooldown_frames is how many frames to wait after a swipe before another can register."
+	},
+	"health_monitor": {
+		"min_signal_quality": 0.35,
+		"_note": "Minimum rPPG signal-to-noise ratio required before a new heart-rate reading is trusted (0 to ~1 scale). Raise this (e.g. 0.5) if you're seeing obviously wrong BPM numbers pop up; lower it (e.g. 0.2) if it stays stuck on 'Calibrating...' too often even in good lighting with a still face."
+	}
+}

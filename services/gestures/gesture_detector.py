@@ -104,6 +104,9 @@ class GestureDetector:
       and vertical_threshold when provided and explicit values are not given
     - `cooldown_frames`: number of frames to ignore new triggers for the same
       hand after a gesture has been reported
+    - `min_cutoff`, `beta`: OneEuroFilter jitter-smoothing parameters (see
+      OneEuroFilter docstring). Lower min_cutoff = steadier when still;
+      higher beta = less lag once the hand is actually moving.
     """
 
     def __init__(
@@ -114,6 +117,8 @@ class GestureDetector:
         vertical_threshold: Optional[float] = None,
         cooldown_frames: int = 6,
         enable_static_poses: bool = False,
+        min_cutoff: float = 1.0,
+        beta: float = 0.3,
     ) -> None:
         self.window_size = max(2, window_size)
 
@@ -127,6 +132,8 @@ class GestureDetector:
         self.vertical_threshold = float(vertical_threshold)
         self.cooldown_frames = int(cooldown_frames)
         self.enable_static_poses = enable_static_poses
+        self.min_cutoff = float(min_cutoff)
+        self.beta = float(beta)
 
         # Per-hand history of wrist x positions (normalized). Keyed by
         # handedness label when available, otherwise by numeric index.
@@ -265,8 +272,8 @@ class GestureDetector:
             except Exception:
                 continue
 
-            filt_x = self._filters_x.setdefault(key, OneEuroFilter(min_cutoff=1.0, beta=0.3))
-            filt_y = self._filters_y.setdefault(key, OneEuroFilter(min_cutoff=1.0, beta=0.3))
+            filt_x = self._filters_x.setdefault(key, OneEuroFilter(min_cutoff=self.min_cutoff, beta=self.beta))
+            filt_y = self._filters_y.setdefault(key, OneEuroFilter(min_cutoff=self.min_cutoff, beta=self.beta))
             now = time.monotonic()
             wrist_x = filt_x.filter(raw_x, now)
             wrist_y = filt_y.filter(raw_y, now)

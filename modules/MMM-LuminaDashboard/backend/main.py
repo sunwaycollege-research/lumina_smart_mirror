@@ -21,6 +21,7 @@ from pydantic import BaseModel
 import database_core
 from vision_pipeline import LuminaVisionPipeline
 from calendar_engine import AsyncCalendarEngine
+from config_loader import load_config
 import httpx
 from logger import get_logger
 
@@ -304,6 +305,11 @@ def get_registration_page():
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(backend_dir, "..", "..", ".."))
 
+# Load config.json (project root) - this is "the place to insert" your own
+# Google Calendar link, news feed choice, and gesture/health tuning. See
+# config.json itself for exact instructions on each field.
+app_config = load_config(project_root)
+
 sys.path.append(os.path.join(project_root, "services", "gestures"))
 sys.path.append(os.path.join(project_root, "services", "face-recognition"))
 
@@ -315,8 +321,8 @@ from profile_manager import ProfileManager
 import face_recognition
 
 # Global Services instances
-vision_system = LuminaVisionPipeline()
-calendar_link = "https://ics.calendarlabs.com/76/mm3137/US_Holidays.ics"
+vision_system = LuminaVisionPipeline(min_signal_quality=app_config["health_monitor"]["min_signal_quality"])
+calendar_link = app_config["calendar"]["ical_url"]
 cal_engine = AsyncCalendarEngine(calendar_link)
 
 encodings_json = os.path.join(project_root, "services", "face-recognition", "profiles", "faces", "encodings.json")
@@ -327,7 +333,13 @@ profile_manager = ProfileManager(profiles_json)
 
 gesture_handler = MediapipeHandler()
 gesture_handler.init_landmarker()
-gesture_detector = GestureDetector()
+gesture_detector = GestureDetector(
+    min_cutoff=app_config["gestures"]["min_cutoff"],
+    beta=app_config["gestures"]["beta"],
+    horizontal_threshold=app_config["gestures"]["horizontal_threshold"],
+    vertical_threshold=app_config["gestures"]["vertical_threshold"],
+    cooldown_frames=app_config["gestures"]["cooldown_frames"],
+)
 
 cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 face_cascade = cv2.CascadeClassifier(cascade_path)
@@ -424,17 +436,16 @@ def get_fallback_news():
         }
     ]
 
-@app.get("/api/dashboard/news")
-async def get_dashboard_news():
-    """Fetches BBC News RSS feed and parses headlines to JSON."""
-    url = "https://feeds.bbci.co.uk/news/rss.xml"
+async def _fetch_rss_items(url: str) -> list | None:
+    """Fetches and parses one RSS feed. Returns None (not []) on any failure,
+    so callers can distinguish "feed had zero items" from "feed failed"."""
     async with httpx.AsyncClient() as client:
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows / Smart Mirror) Lumina OS Engine"}
             response = await client.get(url, headers=headers, timeout=10.0)
             if response.status_code != 200:
-                return get_fallback_news()
-            
+                return None
+
             import xml.etree.ElementTree as ET
             root = ET.fromstring(response.text)
             items = []
@@ -443,17 +454,40 @@ async def get_dashboard_news():
                 description = item.find("description")
                 link = item.find("link")
                 pub_date = item.find("pubDate")
-                
+
                 items.append({
                     "title": title.text.strip() if title is not None and title.text else "No Title",
                     "description": description.text.strip() if description is not None and description.text else "",
                     "link": link.text.strip() if link is not None and link.text else "",
                     "pubDate": pub_date.text.strip() if pub_date is not None and pub_date.text else ""
                 })
-            return items[:10]
+            return items[:10] if items else None
         except Exception as e:
-            print(f"[NEWS FETCH ERROR] Exception: {e}")
-            return get_fallback_news()
+            print(f"[NEWS FETCH ERROR] {url}: {e}")
+            return None
+
+
+@app.get("/api/dashboard/news")
+async def get_dashboard_news():
+    """Fetches the configured news RSS feed(s) and parses headlines to JSON.
+
+    Tries, in order: primary_rss_url from config.json (Nepali source by
+    default), then fallback_rss_url from config.json, then a small static
+    list so the dashboard never shows a blank news panel.
+    """
+    primary_url = app_config["news"]["primary_rss_url"]
+    fallback_url = app_config["news"]["fallback_rss_url"]
+
+    items = await _fetch_rss_items(primary_url)
+    if items:
+        return items
+
+    if fallback_url and fallback_url != primary_url:
+        items = await _fetch_rss_items(fallback_url)
+        if items:
+            return items
+
+    return get_fallback_news()
 
 @app.post("/api/register/start")
 def start_registration(req: RegisterRequest):
@@ -747,6 +781,12 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
             
             identity_payload = {
                 "currentUser": current_user_name,
+                # Raw registry key (e.g. "Sulav"), as opposed to the display
+                # name (e.g. "Dawgybey"). log_health_metrics() below writes
+                # under this same key - the frontend must query summaries
+                # with THIS value, not the display name, or it'll look up
+                # a username that was never actually written to the DB.
+                "currentUserKey": recognized_user if recognized_user not in ["Unknown", "Guest"] else "",
                 "confidence": identity_confidence
             }
             

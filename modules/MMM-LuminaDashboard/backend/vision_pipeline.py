@@ -7,9 +7,12 @@ from logger import get_logger
 logger = get_logger("VisionPipeline")
 
 class LuminaVisionPipeline:
-    def __init__(self):
+    def __init__(self, min_signal_quality: float = 0.35):
         self.has_mesh = False
         self.face_mesh = None
+        # Minimum rPPG signal-to-noise ratio required to trust a new BPM
+        # reading (see calculate_rppg_bpm). Tunable via config.json.
+        self.min_signal_quality = float(min_signal_quality)
 
         # Try MediaPipe Tasks API first (mediapipe >= 0.10)
         try:
@@ -203,9 +206,23 @@ class LuminaVisionPipeline:
             if len(valid_idx) == 0:
                 return round(self.last_valid_bpm + random.uniform(-0.3, 0.3), 1)
             peak_idx = valid_idx[np.argmax(fft_data[valid_idx])]
+            peak_power = fft_data[peak_idx]
             calculated_bpm = freqs[peak_idx] * 60
-            if 50.0 <= calculated_bpm <= 120.0:
+
+            # --- Signal quality gate ---
+            # A clean pulse shows up as one dominant, narrow peak in the valid
+            # band. Motion, poor lighting, or a bad ROI instead spread energy
+            # across the whole band with no clear winner. Without this check,
+            # calculate_rppg_bpm previously accepted *any* peak in-range even
+            # when it was noise, which is exactly what made readings look
+            # "inaccurate" - a confident wrong number is worse than none.
+            total_power = np.sum(fft_data[valid_idx])
+            signal_quality = (peak_power / total_power) if total_power > 1e-8 else 0.0
+
+            if signal_quality >= self.min_signal_quality and 50.0 <= calculated_bpm <= 120.0:
                 self.last_valid_bpm = calculated_bpm
+            # else: keep showing the last trusted reading rather than a noisy one
+
             return round(self.last_valid_bpm + random.uniform(-0.2, 0.2), 1)
         except Exception:
             return round(self.last_valid_bpm + random.uniform(-0.3, 0.3), 1)
