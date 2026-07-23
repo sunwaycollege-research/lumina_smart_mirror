@@ -128,12 +128,20 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: all 0.2s ease;
+  transition:
+    background 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease,
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.3s ease;
 }
 
 .topbar-back-btn:hover {
-  background: rgb(255 255 255 / 8%);
+  background: rgb(212 175 55 / 10%);
   border-color: var(--gold-accent);
+  color: var(--gold-accent);
+  transform: translateX(-3px);
+  box-shadow: 0 4px 16px rgb(212 175 55 / 12%);
 }
 
 .topbar-title {
@@ -308,6 +316,16 @@ body {
   align-items: center;
   margin-bottom: 10px;
   position: relative;
+  padding: 6px 8px;
+  border-radius: 10px;
+  transition:
+    background 0.25s ease,
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.timeline-item:hover {
+  background: rgb(255 255 255 / 3%);
+  transform: translateX(4px);
 }
 
 .clickable-sidebar-card {
@@ -373,6 +391,10 @@ body {
   color: var(--text-primary);
 }
 
+.timeline-item:hover .timeline-title {
+  color: var(--gold-accent);
+}
+
 .timeline-desc {
   font-size: 14px;
   color: var(--text-muted);
@@ -403,14 +425,22 @@ body {
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition:
+    background 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease,
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.3s ease;
   margin-top: 12px;
   box-sizing: border-box;
 }
 
 .timeline-btn-full:hover {
-  background: rgb(255 255 255 / 8%);
+  background: rgb(212 175 55 / 8%);
   border-color: var(--gold-accent);
+  color: var(--gold-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgb(212 175 55 / 10%);
 }
 
 /* System Status Table */
@@ -477,6 +507,16 @@ body {
   gap: 16px;
   align-items: center;
   cursor: pointer;
+  padding: 8px;
+  border-radius: 12px;
+  transition:
+    background 0.25s ease,
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.news-card-body:hover {
+  background: rgb(255 255 255 / 3%);
+  transform: translateX(4px);
 }
 
 .news-thumbnail {
@@ -506,6 +546,10 @@ body {
   font-weight: 500;
   color: var(--text-primary);
   line-height: 1.4;
+}
+
+.news-card-body:hover .news-headline {
+  color: var(--gold-accent);
 }
 
 .news-snippet {
@@ -560,9 +604,10 @@ body {
   min-height: 170px;
   transition:
     transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 0.3s,
-    box-shadow 0.3s,
-    background-color 0.3s;
+    border-color 0.35s ease,
+    box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.35s ease,
+    filter 0.35s ease;
 }
 
 .grid-card-icon-wrap {
@@ -612,13 +657,28 @@ body {
 
 .grid-card:hover {
   background: var(--card-glass-hover-bg);
-  transform: translateY(-4px);
-  box-shadow: 0 16px 40px rgb(0 0 0 / 30%);
+  transform: translateY(-6px) scale(1.02);
+  border-color: rgb(212 175 55 / 25%);
+  box-shadow:
+    0 16px 40px rgb(0 0 0 / 30%),
+    0 0 20px rgb(212 175 55 / 8%);
+}
+
+.grid-card:hover .grid-card-icon-wrap {
+  background: rgb(212 175 55 / 6%);
+  border-color: rgb(212 175 55 / 20%);
+  color: var(--gold-accent);
+  transform: translateY(-2px);
+}
+
+.grid-card:hover .grid-card-title {
+  color: var(--gold-accent);
 }
 
 .grid-card:hover .grid-card-arrow {
-  color: var(--text-primary);
-  border-color: rgb(255 255 255 / 30%);
+  color: var(--gold-accent);
+  border-color: rgb(212 175 55 / 40%);
+  transform: translateX(2px);
 }
 
 /* Selected state - 15% larger & gold border highlight */
@@ -734,6 +794,18 @@ body {
   flex-direction: column;
   align-items: center;
   text-align: center;
+  transition:
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.3s ease,
+    background 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.stat-box:hover {
+  transform: translateY(-3px);
+  border-color: rgb(212 175 55 / 20%);
+  background: rgb(255 255 255 / 4%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
 }
 
 .stat-val {
@@ -889,13 +961,18 @@ body {
   background: rgb(255 255 255 / 2%);
   border: 1px solid var(--card-glass-border);
   border-radius: 16px;
-  transition: all 0.2s ease;
+  transition:
+    background 0.25s ease,
+    border-color 0.25s ease,
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.3s ease;
 }
 
 .interactive-row:hover {
   background: rgb(255 255 255 / 5%);
   border-color: var(--gold-accent);
-  transform: translateX(4px);
+  transform: translateX(6px);
+  box-shadow: -4px 0 12px rgb(212 175 55 / 10%);
 }
 
 .priority-tag-high {
@@ -942,20 +1019,107 @@ body {
   letter-spacing: 2px;
 }
 
-/* Fade in animations */
-.animated-fade-in {
-  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+/* ── Morph Transition System ──────────────────────────────────────────
+   Four directional morphs for spatial, premium page transitions.
+   "in"          – Landing → Module  (zoom forward into content)
+   "out"         – Module → Landing  (zoom back out to overview)
+   "slide-left"  – Module → Next     (slide content left)
+   "slide-right" – Module → Previous (slide content right)
+   ──────────────────────────────────────────────────────────────────── */
+
+/* Drill-in: landing page → fullscreen module */
+.morph-in {
+  animation: morphZoomIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes fadeIn {
-  from {
+@keyframes morphZoomIn {
+  0% {
     opacity: 0;
-    transform: translateY(10px);
+    transform: scale(0.92) translateY(12px);
+    filter: blur(6px);
   }
 
-  to {
+  60% {
     opacity: 1;
-    transform: translateY(0);
+    filter: blur(1px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Drill-out: fullscreen module → landing page */
+.morph-out {
+  animation: morphZoomOut 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes morphZoomOut {
+  0% {
+    opacity: 0;
+    transform: scale(1.06);
+    filter: blur(6px);
+  }
+
+  60% {
+    opacity: 1;
+    filter: blur(1px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+/* Slide-left: cycling to a higher-indexed module */
+.morph-slide-left {
+  animation: morphSlideLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes morphSlideLeft {
+  0% {
+    opacity: 0;
+    transform: translateX(60px) scale(0.97);
+    filter: blur(4px);
+  }
+
+  60% {
+    opacity: 1;
+    filter: blur(0.5px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* Slide-right: cycling to a lower-indexed module */
+.morph-slide-right {
+  animation: morphSlideRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes morphSlideRight {
+  0% {
+    opacity: 0;
+    transform: translateX(-60px) scale(0.97);
+    filter: blur(4px);
+  }
+
+  60% {
+    opacity: 1;
+    filter: blur(0.5px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: blur(0);
   }
 }
 

@@ -589,6 +589,12 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
     fps_start_time = time.time()
     fps_frames = 0
     
+    # Gesture latch: hold a detected gesture for multiple frames so the
+    # frontend is guaranteed to receive it over WebSocket
+    latched_gesture = "NONE"
+    gesture_latch_remaining = 0
+    GESTURE_LATCH_FRAMES = 1  # single frame — the cooldown fix handles dedup now
+    
     try:
         while loop_active:
             vision_data = {"detected": False, "bpm": "Calibrating...", "mood": "NEUTRAL", "anxiety": "LOW"}
@@ -633,15 +639,24 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                     if raw_gesture:
                         logger.info(f"[GESTURE DEBUG] Detected raw gesture: {raw_gesture}")
                         if raw_gesture == "LEFT":
-                            active_gesture = "SWIPE_LEFT"
+                            latched_gesture = "SWIPE_LEFT"
                         elif raw_gesture == "RIGHT":
-                            active_gesture = "SWIPE_RIGHT"
+                            latched_gesture = "SWIPE_RIGHT"
                         elif raw_gesture == "UP":
-                            active_gesture = "SWIPE_UP"
+                            latched_gesture = "SWIPE_UP"
                         elif raw_gesture == "DOWN":
-                            active_gesture = "SWIPE_DOWN"
+                            latched_gesture = "SWIPE_DOWN"
                         else:
-                            active_gesture = raw_gesture
+                            latched_gesture = raw_gesture
+                        gesture_latch_remaining = GESTURE_LATCH_FRAMES
+                    
+                    # Apply latch: emit the gesture while frames remain, then clear
+                    if gesture_latch_remaining > 0:
+                        active_gesture = latched_gesture
+                        gesture_latch_remaining -= 1
+                    else:
+                        active_gesture = "NONE"
+                        latched_gesture = "NONE"
                     
                     # 3. Biometric Identity and registration processes
                     if registration_state["active"]:
@@ -701,7 +716,7 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                     else:
                         # Regular Face recognition checks
                         current_time = time.time()
-                        if current_time - last_user_check_time > 1.5:
+                        if current_time - last_user_check_time > 4.0:
                             last_user_check_time = current_time
                             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                             faces = face_cascade.detectMultiScale(

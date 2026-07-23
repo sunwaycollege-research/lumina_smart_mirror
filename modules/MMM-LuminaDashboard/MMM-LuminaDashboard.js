@@ -86,6 +86,7 @@ Module.register("MMM-LuminaDashboard", {
         this.lastActiveSection = -1;
         this.lastRenderedSection = -2;
         this.activeSectionChanged = false;
+        this.transitionDirection = "in"; // "in" = drilling into module, "out" = returning to landing
         this.lastUser = null;
         this.lastAgendaStr = "";
         this.lastNewsStr = "";
@@ -502,23 +503,15 @@ Module.register("MMM-LuminaDashboard", {
 
     handleIncomingGesture: function(gesture) {
         if (!gesture || gesture === "NONE") {
-            // Reset last gesture tracking so the same gesture can fire again after a pause
-            this.lastReceivedGesture = "NONE";
-            return;
-        }
-
-        // Avoid triggering the exact same gesture multiple times in a row
-        if (gesture === this.lastReceivedGesture) {
             return;
         }
 
         const now = Date.now();
-        // Cooldown of 350ms between any two active gesture actions to prevent double triggers
-        if (now - this.lastGestureTime < 350) {
+        // 300ms cooldown — instant-feeling for swipes, prevents double-triggers from latched frames
+        if (now - this.lastGestureTime < 300) {
             return;
         }
 
-        this.lastReceivedGesture = gesture;
         this.lastGestureTime = now;
 
         console.log(`[LUMINA HUD ACTION] Gesture received: ${gesture}`);
@@ -577,6 +570,17 @@ Module.register("MMM-LuminaDashboard", {
         // Determine if the active section changed since the last getDom execution
         if (this.activeSection !== this.lastRenderedSection) {
             this.activeSectionChanged = true;
+            // Determine morph direction: going to landing = zoom out, going to module = zoom in
+            if (this.activeSection === -1) {
+                this.transitionDirection = "out";
+            } else if (this.lastRenderedSection === -1) {
+                this.transitionDirection = "in";
+            } else {
+                // Switching between two full-screen modules
+                const prev = this.lastRenderedSection;
+                const next = this.activeSection;
+                this.transitionDirection = next > prev ? "slide-left" : "slide-right";
+            }
             this.lastRenderedSection = this.activeSection;
         } else {
             this.activeSectionChanged = false;
@@ -699,7 +703,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for LANDING PAGE Tab (Sleek 3-column layout)
     buildLandingPageSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " morph-" + this.transitionDirection : "");
 
         const now = new Date();
         let hours = now.getHours();
@@ -938,7 +942,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for CALENDAR Tab (Sleek CSS monthly grid calendar + agenda split view)
     buildCalendarSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " morph-" + this.transitionDirection : "");
         container.style.display = "flex";
         container.style.flexDirection = "row";
         container.style.gap = "30px";
@@ -1078,7 +1082,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for SCHEDULE Tab (Detailed timeline of agenda tasks)
     buildScheduleSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " morph-" + this.transitionDirection : "");
 
         let agendaListHTML = "";
         if (this.agendaState && this.agendaState.length > 0) {
@@ -1117,7 +1121,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for HEALTH Tab
     buildHealthSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " morph-" + this.transitionDirection : "");
 
         let heartDisplay = this.biometricState.bpm;
         if (typeof heartDisplay === "number") {
@@ -1277,7 +1281,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for NEWS Tab
     buildNewsSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " morph-" + this.transitionDirection : "");
 
         let newsHTML = "";
         if (this.newsState && this.newsState.length > 0) {
@@ -1314,7 +1318,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for ANALYTICS Tab
     buildAnalyticsSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " morph-" + this.transitionDirection : "");
 
         const username = this.identityState.currentUser && this.identityState.currentUser !== "Searching..." && this.identityState.currentUser !== "Guest" ? this.identityState.currentUser : this.config.fallbackDisplayName;
         let avgHeart = "72.0 BPM";
@@ -1377,7 +1381,7 @@ Module.register("MMM-LuminaDashboard", {
     // Builder for SETTINGS Tab (Dynamic view matching graphite style)
     buildSettingsSection: function() {
         const container = document.createElement("div");
-        container.className = "workspace-section-container" + (this.activeSectionChanged ? " animated-fade-in" : "");
+        container.className = "workspace-section-container" + (this.activeSectionChanged ? " morph-" + this.transitionDirection : "");
         container.style.width = "100%";
         container.style.height = "100%";
         
