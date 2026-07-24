@@ -339,6 +339,8 @@ gesture_detector = GestureDetector(
     horizontal_threshold=app_config["gestures"]["horizontal_threshold"],
     vertical_threshold=app_config["gestures"]["vertical_threshold"],
     cooldown_frames=app_config["gestures"]["cooldown_frames"],
+    enable_static_poses=app_config["gestures"].get("enable_static_poses", True),
+    only_read_fingers=app_config["gestures"].get("only_read_fingers", True),
 )
 
 cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -436,9 +438,66 @@ def get_fallback_news():
         }
     ]
 
+def _clean_html(text: str) -> str:
+    import re
+    if not text:
+        return ""
+    clean = re.sub(r'<[^>]+>', '', text)
+    return clean.strip()
+
+@app.get("/api/dashboard/weather")
+async def get_nepal_weather():
+    """Fetches real-time weather data for Kathmandu, Nepal from Open-Meteo API."""
+    url = "https://api.open-meteo.com/v1/forecast?latitude=27.7172&longitude=85.3240&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=Asia%2FKathmandu"
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(url, timeout=5.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                cur = data.get("current", {})
+                code = cur.get("weather_code", 0)
+                condition = "Clear Sky"
+                icon = "☀️"
+                if 1 <= code <= 3:
+                    condition = "Partly Cloudy"
+                    icon = "⛅"
+                elif 45 <= code <= 48:
+                    condition = "Foggy"
+                    icon = "🌫️"
+                elif 51 <= code <= 67:
+                    condition = "Rain Drizzle"
+                    icon = "🌧️"
+                elif 80 <= code <= 82:
+                    condition = "Heavy Rain"
+                    icon = "⛈️"
+                elif code >= 95:
+                    condition = "Thunderstorm"
+                    icon = "🌩️"
+                    
+                return {
+                    "city": "Kathmandu, Nepal",
+                    "temperature": f"{round(cur.get('temperature_2m', 24))}°C",
+                    "humidity": f"{round(cur.get('relative_humidity_2m', 65))}%",
+                    "wind": f"{cur.get('wind_speed_10m', 8)} km/h",
+                    "condition": condition,
+                    "icon": icon,
+                    "air_quality": "Good"
+                }
+        except Exception as e:
+            print(f"[WEATHER FETCH ERROR] {e}")
+            
+    return {
+        "city": "Kathmandu, Nepal",
+        "temperature": "26°C",
+        "humidity": "65%",
+        "wind": "10 km/h",
+        "condition": "Mostly Cloudy",
+        "icon": "☀️",
+        "air_quality": "Good"
+    }
+
 async def _fetch_rss_items(url: str) -> list | None:
-    """Fetches and parses one RSS feed. Returns None (not []) on any failure,
-    so callers can distinguish "feed had zero items" from "feed failed"."""
+    """Fetches and parses one RSS feed. Returns None (not []) on any failure."""
     async with httpx.AsyncClient() as client:
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows / Smart Mirror) Lumina OS Engine"}
@@ -455,13 +514,16 @@ async def _fetch_rss_items(url: str) -> list | None:
                 link = item.find("link")
                 pub_date = item.find("pubDate")
 
+                raw_desc = description.text.strip() if description is not None and description.text else ""
+                clean_desc = _clean_html(raw_desc)
+
                 items.append({
                     "title": title.text.strip() if title is not None and title.text else "No Title",
-                    "description": description.text.strip() if description is not None and description.text else "",
+                    "description": clean_desc if clean_desc else "Live Nepal & World News update.",
                     "link": link.text.strip() if link is not None and link.text else "",
                     "pubDate": pub_date.text.strip() if pub_date is not None and pub_date.text else ""
                 })
-            return items[:10] if items else None
+            return items[:12] if items else None
         except Exception as e:
             print(f"[NEWS FETCH ERROR] {url}: {e}")
             return None
@@ -469,14 +531,9 @@ async def _fetch_rss_items(url: str) -> list | None:
 
 @app.get("/api/dashboard/news")
 async def get_dashboard_news():
-    """Fetches the configured news RSS feed(s) and parses headlines to JSON.
-
-    Tries, in order: primary_rss_url from config.json (Nepali source by
-    default), then fallback_rss_url from config.json, then a small static
-    list so the dashboard never shows a blank news panel.
-    """
-    primary_url = app_config["news"]["primary_rss_url"]
-    fallback_url = app_config["news"]["fallback_rss_url"]
+    """Fetches the configured news RSS feed(s) and parses headlines to JSON."""
+    primary_url = app_config.get("news", {}).get("primary_rss_url", "https://news.google.com/rss/search?q=Nepal&hl=en-NP&gl=NP&ceid=NP:en")
+    fallback_url = app_config.get("news", {}).get("fallback_rss_url", "https://www.onlinekhabar.com/feed")
 
     items = await _fetch_rss_items(primary_url)
     if items:
@@ -638,16 +695,7 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                     raw_gesture = gesture_detector.detect(hand_landmarks)
                     if raw_gesture:
                         logger.info(f"[GESTURE DEBUG] Detected raw gesture: {raw_gesture}")
-                        if raw_gesture == "LEFT":
-                            latched_gesture = "SWIPE_LEFT"
-                        elif raw_gesture == "RIGHT":
-                            latched_gesture = "SWIPE_RIGHT"
-                        elif raw_gesture == "UP":
-                            latched_gesture = "SWIPE_UP"
-                        elif raw_gesture == "DOWN":
-                            latched_gesture = "SWIPE_DOWN"
-                        else:
-                            latched_gesture = raw_gesture
+                        latched_gesture = raw_gesture
                         gesture_latch_remaining = GESTURE_LATCH_FRAMES
                     
                     # Apply latch: emit the gesture while frames remain, then clear

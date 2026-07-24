@@ -37,6 +37,12 @@ DEFAULTS = {
         "horizontal_threshold": 0.08,
         "vertical_threshold": 0.08,
         "cooldown_frames": 6,
+        # Enables static hand-pose gestures (CLOSED_FIST, ONE_FINGER..FIVE_FINGERS,
+        # THUMBS_UP) on top of the LEFT/RIGHT/UP/DOWN swipe gestures. Required for
+        # finger-count navigation and closed-fist "close" gesture to work.
+        "enable_static_poses": True,
+        # Restricts detection to finger counting only (ignores motion/swipe gestures)
+        "only_read_fingers": True,
     },
     "health_monitor": {
         "min_signal_quality": 0.35,

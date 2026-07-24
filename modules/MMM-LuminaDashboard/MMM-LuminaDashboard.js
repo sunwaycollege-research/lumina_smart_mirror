@@ -91,6 +91,8 @@ Module.register("MMM-LuminaDashboard", {
         this.lastAgendaStr = "";
         this.lastNewsStr = "";
         this.lastGestureTime = 0; // Time of last processed gesture to prevent double-triggering
+        this.lastHandledGesture = "NONE"; // Track active gesture state to prevent continuous re-triggering while held
+        this.weatherState = { city: "Kathmandu, Nepal", temperature: "24°C", humidity: "65%", wind: "8 km/h", condition: "Partly Cloudy", icon: "⛅", air_quality: "Good" };
         
         // Initialize rolling history of the last 12 heart rate values for the 5-second live graph
         this.liveHeartrateHistory = [];
@@ -109,10 +111,12 @@ Module.register("MMM-LuminaDashboard", {
         this.connectToCoreOSDaemon();
         this.fetchHistoricalSummary();
         this.fetchLiveNews();
+        this.fetchNepalWeather();
 
-        // Refresh news every 5 minutes
+        // Refresh news every 5 minutes and weather every 10 minutes
         const self = this;
         setInterval(() => { self.fetchLiveNews(); }, 300000);
+        setInterval(() => { self.fetchNepalWeather(); }, 600000);
 
         // Update landing page time dynamically every 1 second without full redrawing
         setInterval(() => { self.updateLandingPageClock(); }, 1000);
@@ -139,9 +143,9 @@ Module.register("MMM-LuminaDashboard", {
                     self.liveHeartrateHistory.shift();
                 }
                 
-                // Force redraw if user is looking at the Health screen
-                if (self.activeSection === 2) {
-                    self.updateDom();
+                // Update real-time fields smoothly if user is on the Health screen
+                if (self.activeSection === 2 && self.biometricState) {
+                    self.updateRealtimeFields({ biometrics: self.biometricState });
                 }
             }
         }, 5000);
@@ -351,7 +355,8 @@ Module.register("MMM-LuminaDashboard", {
             
             const gestureVal = wrapper.querySelector(".status-gesture-val");
             if (gestureVal && payload.gestures) {
-                gestureVal.innerText = payload.gestures.activeGesture === "NONE" ? "READY" : payload.gestures.activeGesture;
+                const act = payload.gestures.activeGesture;
+                gestureVal.innerText = act === "NONE" ? "READY" : act.replace("_", " ");
             }
 
             const greetingEl = document.querySelector(".greeting-text");
@@ -501,59 +506,102 @@ Module.register("MMM-LuminaDashboard", {
             .catch(err => console.error("[LUMINA FRONTEND ERROR] News fetching failed:", err));
     },
 
+    // Fetches live Nepal weather data
+    fetchNepalWeather: function() {
+        const self = this;
+        fetch(`${this.config.apiBaseUrl}/api/dashboard/weather`)
+            .then(res => res.json())
+            .then(data => {
+                if (data) {
+                    self.weatherState = data;
+                    self.updateWeatherFields();
+                }
+            })
+            .catch(err => {
+                console.error("[LUMINA WEATHER ERROR] Weather fetch failed:", err);
+                self.weatherState = {
+                    city: "Kathmandu, Nepal",
+                    temperature: "24°C",
+                    humidity: "65%",
+                    wind: "8 km/h",
+                    condition: "Partly Cloudy",
+                    icon: "⛅",
+                    air_quality: "Good"
+                };
+                self.updateWeatherFields();
+            });
+    },
+
+    updateWeatherFields: function() {
+        if (!this.weatherState) return;
+        const barWeather = document.querySelector(".status-weather-val");
+        if (barWeather) {
+            barWeather.innerHTML = `<span class="icon">${this.weatherState.icon}</span> ${this.weatherState.city}: ${this.weatherState.temperature}, ${this.weatherState.condition}`;
+        }
+        const cardTemp = document.querySelector(".weather-temp");
+        if (cardTemp) {
+            cardTemp.innerText = this.weatherState.temperature;
+        }
+        const cardDetails = document.querySelector(".weather-details");
+        if (cardDetails) {
+            cardDetails.innerHTML = `
+                <div>${this.weatherState.city}</div>
+                <div>Humidity: ${this.weatherState.humidity}</div>
+                <div>Air Quality: ${this.weatherState.air_quality}</div>
+            `;
+        }
+    },
+
     handleIncomingGesture: function(gesture) {
         if (!gesture || gesture === "NONE") {
+            this.lastHandledGesture = "NONE";
+            return;
+        }
+
+        // Prevent re-triggering the exact same gesture while it is held continuously across frames
+        if (gesture === this.lastHandledGesture) {
             return;
         }
 
         const now = Date.now();
-        // 300ms cooldown — instant-feeling for swipes, prevents double-triggers from latched frames
         if (now - this.lastGestureTime < 300) {
             return;
         }
 
         this.lastGestureTime = now;
+        this.lastHandledGesture = gesture;
 
-        console.log(`[LUMINA HUD ACTION] Gesture received: ${gesture}`);
+        console.log(`[LUMINA HUD ACTION] Gesture triggered ONCE: ${gesture}`);
         
         // Log to terminal stdout through the MagicMirror node helper
         this.sendSocketNotification("LOG_GESTURE", gesture);
 
         let shouldUpdate = false;
-        
+
+        // Holding up 1-5 fingers jumps straight to that numbered section
+        // (1=Calendar, 2=Schedule, 3=Health Monitor, 4=Live News, 5=Analytics),
+        // from anywhere in the UI - landing page or inside another section.
+        const FINGER_COUNT_SECTION = {
+            "ONE_FINGER": 0,
+            "TWO_FINGERS": 1,
+            "THREE_FINGERS": 2,
+            "FOUR_FINGERS": 3,
+            "FIVE_FINGERS": 4
+        };
+
         // Static pose fallbacks
-        if (gesture === "CLOSED_FIST" || gesture === "THUMBS_UP") {
+        if (gesture === "CLOSED_FIST") {
+            // Closed fist exits active section and returns to landing page
             if (this.activeSection !== -1) {
                 this.activeSection = -1;
                 shouldUpdate = true;
             }
-        } else if (gesture === "OPEN_PALM" || gesture === "FIVE_FINGERS") {
+        } else if (Object.prototype.hasOwnProperty.call(FINGER_COUNT_SECTION, gesture)) {
+            // Only allow section opening when on the Home / Landing page
             if (this.activeSection === -1) {
-                this.activeSection = this.landingSelectedIndex;
-                shouldUpdate = true;
-            }
-        } else if (this.activeSection === -1) {
-            // Landing page overview: Left/Right swipes move selection, Up/Down swipes open/enter
-            if (gesture === "SWIPE_LEFT") {
-                this.landingSelectedIndex = (this.landingSelectedIndex - 1 + 6) % 6;
-                shouldUpdate = true;
-            } else if (gesture === "SWIPE_RIGHT") {
-                this.landingSelectedIndex = (this.landingSelectedIndex + 1) % 6;
-                shouldUpdate = true;
-            } else if (gesture === "SWIPE_UP" || gesture === "SWIPE_DOWN") {
-                this.activeSection = this.landingSelectedIndex;
-                shouldUpdate = true;
-            }
-        } else {
-            // Fullscreen sub-section: Left/Right swipes cycle pages, Up/Down swipes return home
-            if (gesture === "SWIPE_LEFT") {
-                this.activeSection = (this.activeSection - 1 + 6) % 6;
-                shouldUpdate = true;
-            } else if (gesture === "SWIPE_RIGHT") {
-                this.activeSection = (this.activeSection + 1) % 6;
-                shouldUpdate = true;
-            } else if (gesture === "SWIPE_UP" || gesture === "SWIPE_DOWN") {
-                this.activeSection = -1;
+                const targetSection = FINGER_COUNT_SECTION[gesture];
+                this.landingSelectedIndex = targetSection;
+                this.activeSection = targetSection;
                 shouldUpdate = true;
             }
         }
@@ -617,7 +665,7 @@ Module.register("MMM-LuminaDashboard", {
             topBar.innerHTML = `
                 <button class="topbar-back-btn">${ICONS.HOME} HOME</button>
                 <span class="topbar-title">${currentItem ? currentItem.label : "VIEW"}</span>
-                <span class="topbar-gesture-hint">CLOSED FIST to exit | Swipe to cycle</span>
+                <span class="topbar-gesture-hint">CLOSED FIST (0 fingers) to exit to Home Page</span>
             `;
             
             topBar.querySelector(".topbar-back-btn").addEventListener("click", () => {
@@ -680,7 +728,7 @@ Module.register("MMM-LuminaDashboard", {
 
         statusBar.innerHTML = `
             <div class="status-bar-left">
-                <span class="status-stat"><span class="icon">☀️</span> 26°C, Mostly Cloudy</span>
+                <span class="status-stat status-weather-val"><span class="icon">${this.weatherState.icon}</span> ${this.weatherState.city}: ${this.weatherState.temperature}, ${this.weatherState.condition}</span>
                 <span class="status-stat"><span class="icon">📶</span> Connected (192.168.1.25)</span>
                 <span class="status-stat"><span class="icon">💻</span> CPU <span class="val-cpu">${this.systemStats.cpu}%</span></span>
                 <span class="status-stat"><span class="icon">💾</span> RAM <span class="val-ram">${this.systemStats.ram}%</span></span>
@@ -730,12 +778,12 @@ Module.register("MMM-LuminaDashboard", {
         }
 
         const menuItems = [
-            { id: 0, label: "CALENDAR", icon: ICONS.CALENDAR, desc: "Monthly overview and important dates" },
-            { id: 1, label: "SCHEDULE", icon: ICONS.SCHEDULE, desc: "Sync timelines and meeting board" },
-            { id: 2, label: "HEALTH MONITOR", icon: ICONS.HEALTH, desc: "Live physiological rPPG sensors" },
-            { id: 3, label: "LIVE NEWS", icon: ICONS.NEWS, desc: "Top global headlines and RSS feeds" },
-            { id: 4, label: "ANALYTICS", icon: ICONS.TRENDS, desc: "Insights and performance trends" },
-            { id: 5, label: "SETTINGS", icon: ICONS.SETTINGS, desc: "Configure system options and face scans" }
+            { id: 0, label: "CALENDAR", icon: ICONS.CALENDAR, desc: "Monthly overview and important dates", fingerHint: "1 FINGER" },
+            { id: 1, label: "SCHEDULE", icon: ICONS.SCHEDULE, desc: "Sync timelines and meeting board", fingerHint: "2 FINGERS" },
+            { id: 2, label: "HEALTH MONITOR", icon: ICONS.HEALTH, desc: "Live physiological rPPG sensors", fingerHint: "3 FINGERS" },
+            { id: 3, label: "LIVE NEWS", icon: ICONS.NEWS, desc: "Top global headlines and RSS feeds", fingerHint: "4 FINGERS" },
+            { id: 4, label: "ANALYTICS", icon: ICONS.TRENDS, desc: "Insights and performance trends", fingerHint: "5 FINGERS" },
+            { id: 5, label: "SETTINGS", icon: ICONS.SETTINGS, desc: "Configure system options and face scans", fingerHint: "SETTINGS" }
         ];
 
         let menuGridHTML = "";
@@ -743,6 +791,9 @@ Module.register("MMM-LuminaDashboard", {
             const isSelected = index === this.landingSelectedIndex ? "selected" : "";
             menuGridHTML += `
                 <div class="grid-card ${isSelected}" data-index="${index}">
+                    <div class="grid-card-finger-badge" style="position: absolute; top: 14px; right: 14px; background: rgba(212,175,55,0.12); border: 1px solid rgba(212,175,55,0.25); color: var(--gold-accent); font-size: 0.68rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; letter-spacing: 0.5px;">
+                        ${item.fingerHint}
+                    </div>
                     <div class="grid-card-icon-wrap">
                         ${item.icon}
                     </div>
@@ -834,7 +885,7 @@ Module.register("MMM-LuminaDashboard", {
                                 <td class="val-side status-heart-val">${heartDisplay} <span class="status-dot red"></span></td>
                             </tr>
                             <tr>
-                                <td class="lbl-side">${ICONS.HOME} Gesture Engine</td>
+                                <td class="lbl-side">${ICONS.HOME} Finger Engine</td>
                                 <td class="val-side status-gesture-val">READY <span class="status-dot blue"></span></td>
                             </tr>
                             <tr>
@@ -1079,42 +1130,107 @@ Module.register("MMM-LuminaDashboard", {
         return container;
     },
 
-    // Builder for SCHEDULE Tab (Detailed timeline of agenda tasks)
+    // Builder for SCHEDULE Tab (FullCalendar CDN + Agenda meeting board split view)
     buildScheduleSection: function() {
         const container = document.createElement("div");
         container.className = "workspace-section-container" + (this.activeSectionChanged ? " morph-" + this.transitionDirection : "");
+        container.style.display = "flex";
+        container.style.flexDirection = "column";
+        container.style.gap = "20px";
+        container.style.height = "100%";
+
+        const self = this;
 
         let agendaListHTML = "";
         if (this.agendaState && this.agendaState.length > 0) {
             this.agendaState.forEach(evt => {
                 const badgeClass = evt.priority === "HIGH" ? "priority-tag-high" : "priority-tag-low";
                 agendaListHTML += `
-                    <div class="agenda-item-row interactive-row" style="padding: 20px 24px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                    <div class="agenda-item-row interactive-row" style="padding: 14px 20px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
                         <div style="display: flex; align-items: center;">
-                            <span style="font-size: 15px; padding: 6px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-glass-border); border-radius: 8px; color: var(--gold-accent);">${evt.start}</span>
-                            <div style="margin-left: 24px; display: flex; flex-direction: column; gap: 4px;">
-                                <span style="font-size: 18px; font-weight: 500; color: #fff;">${evt.title}</span>
-                                <span style="font-size: 15px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">${ICONS.LOCATION} ${evt.location}</span>
+                            <span style="font-size: 13px; padding: 4px 10px; background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.25); border-radius: 8px; color: var(--gold-accent); font-weight: 500;">${evt.start}</span>
+                            <div style="margin-left: 18px; display: flex; flex-direction: column; gap: 2px;">
+                                <span style="font-size: 16px; font-weight: 500; color: #fff;">${evt.title}</span>
+                                <span style="font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">${ICONS.LOCATION} ${evt.location}</span>
                             </div>
                         </div>
                         <div>
-                            <span class="${badgeClass}" style="font-size: 13px; padding: 4px 12px;">${evt.priority}</span>
+                            <span class="${badgeClass}" style="font-size: 12px; padding: 3px 10px; border-radius: 8px;">${evt.priority}</span>
                         </div>
                     </div>
                 `;
             });
         } else {
             agendaListHTML = `
-                <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 200px; opacity: 0.5;">
-                    <span style="font-size: 2rem; margin-bottom: 12px;">⏳</span>
-                    <span style="font-size: 16px;">Syncing active meeting board...</span>
+                <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 140px; opacity: 0.6;">
+                    <span style="font-size: 1.5rem; margin-bottom: 6px;">⏳</span>
+                    <span style="font-size: 14px;">Syncing active meeting board...</span>
                 </div>`;
         }
 
         container.innerHTML = `
-            <div class="section-title" style="font-size: 1.5rem; margin-bottom: 24px; letter-spacing: 1px; font-family: 'Outfit'; color: var(--gold-accent);">${ICONS.CALENDAR} SYSTEM SMART MEETING BOARD</div>
-            <div class="agenda-list-wrapper scrollable-container">${agendaListHTML}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <div class="section-title" style="font-size: 1.4rem; letter-spacing: 1px; font-family: 'Outfit'; color: var(--gold-accent); display: flex; align-items: center; gap: 8px;">
+                    ${ICONS.SCHEDULE} SYSTEM SCHEDULE & TIMELINE (FULLCALENDAR CDN)
+                </div>
+                <span style="font-size: 0.85rem; padding: 4px 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #fff;">Interactive iCal Sync</span>
+            </div>
+            
+            <div style="display: flex; gap: 24px; flex: 1; min-height: 0;">
+                <!-- Left: FullCalendar CDN Interactive Mount -->
+                <div style="flex: 1.4; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--card-glass-border); border-radius: 20px; padding: 18px; display: flex; flex-direction: column; min-height: 400px; overflow: hidden;">
+                    <div id="lumina-fullcalendar-mount" style="flex: 1; height: 100%; color: #fff;"></div>
+                </div>
+
+                <!-- Right: Priority Meeting Board -->
+                <div style="flex: 1; background: var(--card-glass-bg); border: 1px solid var(--card-glass-border); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; min-height: 400px;">
+                    <div style="font-size: 1.1rem; font-weight: 500; color: #fff; margin-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Priority Meeting Board</span>
+                        <span style="font-size: 0.75rem; color: var(--gold-accent); text-transform: uppercase;">Upcoming</span>
+                    </div>
+                    <div class="agenda-list-wrapper scrollable-container" style="flex: 1; overflow-y: auto;">${agendaListHTML}</div>
+                </div>
+            </div>
         `;
+
+        // Mount FullCalendar CDN instance after DOM renders
+        setTimeout(() => {
+            const calendarEl = container.querySelector("#lumina-fullcalendar-mount");
+            if (calendarEl && window.FullCalendar) {
+                try {
+                    const todayStr = new Date().toISOString().split("T")[0];
+                    const defaultEvents = [
+                        { title: "Nepal Tech Advisory Meeting", start: todayStr + "T09:30:00", end: todayStr + "T11:00:00", backgroundColor: "rgba(212,175,55,0.85)", borderColor: "#d4af37" },
+                        { title: "System Architecture Review", start: todayStr + "T13:00:00", end: todayStr + "T14:30:00", backgroundColor: "rgba(59,130,246,0.85)", borderColor: "#3b82f6" },
+                        { title: "Live Vision Pipeline Sync", start: todayStr + "T16:00:00", end: todayStr + "T17:00:00", backgroundColor: "rgba(16,185,129,0.85)", borderColor: "#10b981" }
+                    ];
+
+                    const calendar = new window.FullCalendar.Calendar(calendarEl, {
+                        initialView: "timeGridWeek",
+                        headerToolbar: {
+                            left: "prev,next today",
+                            center: "title",
+                            right: "dayGridMonth,timeGridWeek"
+                        },
+                        events: (self.agendaState && self.agendaState.length > 0) ? self.agendaState.map(evt => ({
+                            title: evt.title,
+                            start: evt.start,
+                            backgroundColor: evt.priority === "HIGH" ? "rgba(239,68,68,0.85)" : "rgba(212,175,55,0.85)",
+                            borderColor: evt.priority === "HIGH" ? "#ef4444" : "#d4af37"
+                        })) : defaultEvents,
+                        height: "100%",
+                        slotMinTime: "07:00:00",
+                        slotMaxTime: "22:00:00",
+                        expandRows: true,
+                        nowIndicator: true
+                    });
+                    calendar.render();
+                } catch(e) {
+                    console.error("[FULLCALENDAR CDN ERROR]", e);
+                }
+            }
+        }, 150);
+
         return container;
     },
 
@@ -1406,12 +1522,14 @@ Module.register("MMM-LuminaDashboard", {
                 <div class="glass-card" style="padding: 28px; display: flex; flex-direction: column; gap: 20px;">
                     <div style="font-size: 1.25rem; font-weight: 500; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px; color: #fff;">Gesture Mappings</div>
                     <div style="font-size: 16px; color: var(--text-muted); line-height: 1.6;">
-                        Current system gesture engine mappings:
+                        Current system finger tracking engine navigation rules:
                         <ul style="padding-left: 20px; margin-top: 12px; color: #fff; display: flex; flex-direction: column; gap: 10px;">
-                            <li><span style="color: var(--gold-accent); font-weight: 500;">Swipe Left / Right / Up / Down:</span> Cycle and navigate between feature cards</li>
-                            <li><span style="color: var(--gold-accent); font-weight: 500;">Open Palm:</span> Select highlighted feature card</li>
-                            <li><span style="color: var(--gold-accent); font-weight: 500;">Closed Fist:</span> Go back to home page from any screen</li>
-                            <li><span style="color: var(--gold-accent); font-weight: 500;">Point Gesture:</span> Scroll active lists or content</li>
+                            <li><span style="color: var(--gold-accent); font-weight: 500;">0 Fingers (Closed Fist):</span> Exit current active section and return to Home Page</li>
+                            <li><span style="color: var(--gold-accent); font-weight: 500;">1 Finger (from Home):</span> Open Calendar</li>
+                            <li><span style="color: var(--gold-accent); font-weight: 500;">2 Fingers (from Home):</span> Open Schedule</li>
+                            <li><span style="color: var(--gold-accent); font-weight: 500;">3 Fingers (from Home):</span> Open Health Monitor</li>
+                            <li><span style="color: var(--gold-accent); font-weight: 500;">4 Fingers (from Home):</span> Open Live News</li>
+                            <li><span style="color: var(--gold-accent); font-weight: 500;">5 Fingers (from Home):</span> Open Analytics</li>
                         </ul>
                     </div>
                 </div>
