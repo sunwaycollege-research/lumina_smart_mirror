@@ -314,10 +314,10 @@ sys.path.append(os.path.join(project_root, "services", "gestures"))
 sys.path.append(os.path.join(project_root, "services", "face-recognition"))
 
 # Import direct processors
-from mediapipe_handler import MediapipeHandler
-from gesture_detector import GestureDetector
-from face_recognizer import FaceRecognizer
-from profile_manager import ProfileManager
+from mediapipe_handler import MediapipeHandler  # type: ignore
+from gesture_detector import GestureDetector  # type: ignore
+from face_recognizer import FaceRecognizer  # type: ignore
+from profile_manager import ProfileManager  # type: ignore
 import face_recognition
 
 # Global Services instances

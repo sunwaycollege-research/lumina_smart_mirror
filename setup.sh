@@ -9,6 +9,7 @@ set -e
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$PROJECT_ROOT/.venv"
+REQ_ROOT="$PROJECT_ROOT/requirements.txt"
 REQ_BACKEND="$PROJECT_ROOT/modules/MMM-LuminaDashboard/backend/requirements.txt"
 REQ_FACE="$PROJECT_ROOT/services/face-recognition/requirements.txt"
 REQ_GESTURE="$PROJECT_ROOT/services/gestures/requirements.txt"
@@ -35,13 +36,19 @@ fi
 echo "[INFO] Upgrading core pip packages..."
 "$VENV_DIR/bin/pip" install --upgrade pip setuptools wheel
 
-# 4. Install backend dependencies
+# 4. Install root project requirements
+if [ -f "$REQ_ROOT" ]; then
+    echo "[INFO] Installing root project dependencies ($REQ_ROOT)..."
+    "$VENV_DIR/bin/pip" install -r "$REQ_ROOT"
+fi
+
+# 5. Install backend dependencies if present
 if [ -f "$REQ_BACKEND" ]; then
     echo "[INFO] Installing backend dependencies ($REQ_BACKEND)..."
     "$VENV_DIR/bin/pip" install -r "$REQ_BACKEND"
 fi
 
-# 5. Install service dependencies if present
+# 6. Install service dependencies if present
 if [ -f "$REQ_FACE" ]; then
     echo "[INFO] Installing face-recognition service dependencies..."
     "$VENV_DIR/bin/pip" install -r "$REQ_FACE"

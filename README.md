@@ -10,9 +10,11 @@ _(Note: Project is transitioning from Lumina to the SOMA framework)._
 ## 🚀 Key Features
 
 - **100% Local Inference:** Built with a strict privacy-first architecture. All computer vision and data processing happen entirely on the local device—no cloud uploads.
+- **Continuous Temporal Gesture Verification:** Real-time MediaPipe hand pose tracking with hold-to-confirm temporal verification (`0%` → `100%` progress HUD pill), eliminating false triggers and twitchy navigation.
+- **rPPG Biological Telemetry:** Optical blood volume pulse analysis recovering heart rate (BPM), HRV (ms), stress level (%), and respiration rate (RPM) directly from webcam frames.
+- **Biometric Face Recognition & Web Registration:** Real-time face recognition with multi-user profiles and an interactive web registration portal (`/register`).
 - **Proactive Proximity Sensing:** Uses PIR motion detection and ultrasonic distance mapping to dynamically wake up the display as a user approaches.
 - **Dielectric Optical Layer:** Uses specialized two-way glass over a high-luminance display panel, appearing as a premium mirror when idle and rendering crisp UI elements when active.
-- **AI Computer Vision & Voice:** Built-in face recognition, MediaPipe hand gesture control, and offline Vosk voice recognition daemon.
 
 ---
 

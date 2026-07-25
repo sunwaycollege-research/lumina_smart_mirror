@@ -1,83 +1,57 @@
 # Gesture Recognition Service
 
-A real-time hand gesture recognition system using MediaPipe for hand tracking and a rule-based classifier to detect directional swipe gestures.
+A real-time hand gesture recognition system using MediaPipe for hand tracking and a **Continuous Temporal Verification Algorithm** to detect finger count static poses (`CLOSED_FIST`, `ONE_FINGER` to `FIVE_FINGERS`) and directional swipes with zero false-trigger twitching.
 
-## Supported Gestures
+## Supported Gestures & Mapping
 
-The service detects four directional swipe gestures:
+The service detects extended finger counts and maps them to Lumina Smart Mirror OS navigation:
 
-| Gesture   | Direction      | Trigger                                            | Output    |
-| --------- | -------------- | -------------------------------------------------- | --------- |
-| **LEFT**  | Swipe left     | Horizontal movement exceeds threshold to the left  | `"LEFT"`  |
-| **RIGHT** | Swipe right    | Horizontal movement exceeds threshold to the right | `"RIGHT"` |
-| **UP**    | Swipe upward   | Vertical movement exceeds threshold upward         | `"UP"`    |
-| **DOWN**  | Swipe downward | Vertical movement exceeds threshold downward       | `"DOWN"`  |
+| Gesture           | Pose / Count       | UI Action / Target Section      | Output String     |
+| ----------------- | ------------------ | ------------------------------- | ----------------- |
+| **CLOSED_FIST**   | 0 Fingers          | Return to Home / Landing Page   | `"CLOSED_FIST"`   |
+| **ONE_FINGER**    | 1 Extended Finger  | Calendar View                   | `"ONE_FINGER"`    |
+| **TWO_FINGERS**   | 2 Extended Fingers | Schedule View                   | `"TWO_FINGERS"`   |
+| **THREE_FINGERS** | 3 Extended Fingers | Health Monitor (rPPG Telemetry) | `"THREE_FINGERS"` |
+| **FOUR_FINGERS**  | 4 Extended Fingers | Live News RSS Feed              | `"FOUR_FINGERS"`  |
+| **FIVE_FINGERS**  | 5 Extended Fingers | System Analytics                | `"FIVE_FINGERS"`  |
 
-## Gesture Movement Diagrams
+---
 
-```
-LEFT Gesture                RIGHT Gesture
-─────────────────          ─────────────────
-      ↙    ↙                  ↘    ↘
-  ✋(start) → ✋(end)      ✋(end) ← ✋(start)
+## Continuous Temporal Verification Algorithm
 
-UP Gesture                  DOWN Gesture
-─────────────────          ─────────────────
-      ↑    ↑                  ↓    ↓
-      ✋                       ✋
-     (end)                    (start)
-      |                        |
-      ✋                       ✋
-    (start)                   (end)
-```
+Instead of triggering actions abruptly on single or 2-frame recognitions, `GestureDetector` implements continuous frame sampling and temporal stability verification:
 
-## Detection Algorithm
+1. **Candidate Hold Tracking**: Maintains candidate gesture count across continuous frame stream (`process_verification`).
+2. **Progress Calculation**: Computes real-time hold progress percentage:
+   $$\text{Progress} = \min\left(1.0, \frac{\text{Candidate Match Count}}{\text{verification\_frames}}\right)$$
+3. **Verification States**:
+   - `IDLE`: No hand detected or candidate cleared.
+   - `VERIFYING`: Candidate hand pose detected, progress (0% → 99%) rendered on Lumina HUD progress bar.
+   - `CONFIRMED`: Progress reaches 100% (1.0). Action fires ONCE and triggers frame cooldown guard.
+4. **Interruption Recovery**: If the user drops or changes their hand pose before reaching 100%, verification decays/resets smoothly without triggering accidental actions.
 
-### Dominant Axis Classification
+---
 
-The detector tracks wrist (landmark index 0) position across a sliding window of frames and computes movement deltas in both horizontal (x) and vertical (y) axes.
+## Detection Algorithm & Parameters
 
-**Axis Priority:**
+| Threshold / Parameter | Type | Default | Description                                                      |
+| --------------------- | ---- | ------- | ---------------------------------------------------------------- |
+| `verification_frames` | int  | 8       | Continuous matching frames (~0.6s–0.8s hold) required to confirm |
+| `cooldown_frames`     | int  | 6       | Cooldown frames to wait after confirmation before next action    |
+| `window_size`         | int  | 3       | Sliding history buffer for frame finger count stability          |
+| `only_read_fingers`   | bool | true    | Restricts detection to finger count poses (0 to 5)               |
 
-- If `|deltaX| > |deltaY|`: Classify as **LEFT** or **RIGHT** (horizontal gesture)
-- If `|deltaY| ≥ |deltaX|`: Classify as **UP** or **DOWN** (vertical gesture)
-
-This prevents misclassification of slightly diagonal movements.
-
-### Movement Thresholds
-
-Movement thresholds are in **normalized coordinates** (0.0 to 1.0 representing the full frame).
-
-| Threshold              | Type  | Default | Description                                                        |
-| ---------------------- | ----- | ------- | ------------------------------------------------------------------ |
-| `horizontal_threshold` | float | 0.12    | Min horizontal movement (12% of frame width) to trigger LEFT/RIGHT |
-| `vertical_threshold`   | float | 0.12    | Min vertical movement (12% of frame height) to trigger UP/DOWN     |
-| `window_size`          | int   | 8       | Number of frames to analyze for movement                           |
-| `cooldown_frames`      | int   | 10      | Frames to wait before accepting next gesture from same hand        |
-
-**Example:**
-
-- Frame width = 640 pixels
-- `horizontal_threshold = 0.12`
-- Min movement = 640 × 0.12 = 77 pixels
-
-### Cooldown Mechanism
-
-After a gesture is detected, the system waits for `cooldown_frames` frames before accepting a new gesture from the same hand. This prevents:
-
-- Repeated triggering from a single prolonged gesture
-- Noise from inducing false positives
-- The hand remaining stationary after a gesture causing re-triggers
+---
 
 ## Files
 
-| File                       | Purpose                                                                                             |
-| -------------------------- | --------------------------------------------------------------------------------------------------- |
-| `gesture.py`               | Entry point. Initializes camera handler and gesture detector, processes frames continuously.        |
-| `gesture_detector.py`      | `GestureDetector` class. Implements rule-based gesture classification using wrist position history. |
-| `mediapipe_handler.py`     | `MediapipeHandler` class. Handles camera capture and MediaPipe hand landmark extraction.            |
-| `requirements.txt`         | Python dependencies (MediaPipe, OpenCV, NumPy).                                                     |
-| `test_gesture_detector.py` | Unit tests for gesture detector logic.                                                              |
+| File                       | Purpose                                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `gesture_detector.py`      | `GestureDetector` class. Implements `process_verification()` for continuous temporal verification and progress tracking. |
+| `mediapipe_handler.py`     | `MediapipeHandler` class. Handles camera capture and MediaPipe HandLandmarker tasks processing.                          |
+| `gesture.py`               | Standalone CLI entry point for testing gesture recognition pipeline.                                                     |
+| `requirements.txt`         | Subsystem Python dependencies (MediaPipe 0.10+, OpenCV, NumPy).                                                          |
+| `test_gesture_detector.py` | Unit test suite covering classification, temporal progress, and state transitions.                                       |
 
 ## Architecture
 
