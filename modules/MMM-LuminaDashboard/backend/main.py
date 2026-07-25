@@ -339,6 +339,7 @@ gesture_detector = GestureDetector(
     horizontal_threshold=app_config["gestures"]["horizontal_threshold"],
     vertical_threshold=app_config["gestures"]["vertical_threshold"],
     cooldown_frames=app_config["gestures"]["cooldown_frames"],
+    verification_frames=app_config["gestures"].get("verification_frames", 8),
     enable_static_poses=app_config["gestures"].get("enable_static_poses", True),
     only_read_fingers=app_config["gestures"].get("only_read_fingers", True),
 )
@@ -683,18 +684,26 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                     # Mirror the frame horizontally for natural mirror-like behavior
                     frame = cv2.flip(frame, 1)
                     
-                    # 1. Run vision and gesture processing in parallel for lower latency
+                    # 1. Downsample frame for fast AI landmark inference (320x240 reduces tensor ops by 75%)
+                    small_frame = cv2.resize(frame, (320, 240), interpolation=cv2.INTER_NEAREST)
+                    
+                    # Run vision and gesture processing in parallel on background thread pool
                     loop = asyncio.get_event_loop()
-                    vision_future = loop.run_in_executor(None, vision_system.process_frame, frame)
-                    gesture_future = loop.run_in_executor(None, gesture_handler.process_frame_direct, frame)
+                    vision_future = loop.run_in_executor(None, vision_system.process_frame, small_frame)
+                    gesture_future = loop.run_in_executor(None, gesture_handler.process_frame_direct, small_frame)
                     
                     vision_data = await vision_future
                     hand_landmarks = await gesture_future
                     
-                    # 2. Gesture classification (lightweight, runs on main thread)
-                    raw_gesture = gesture_detector.detect(hand_landmarks)
-                    if raw_gesture:
-                        logger.info(f"[GESTURE DEBUG] Detected raw gesture: {raw_gesture}")
+                    # 2. Continuous gesture verification (lightweight, runs on main thread)
+                    verification_res = gesture_detector.process_verification(hand_landmarks)
+                    raw_gesture = verification_res.get("active_gesture", "NONE")
+                    verifying_gesture = verification_res.get("verifying_gesture", "NONE")
+                    verification_progress = verification_res.get("progress", 0.0)
+                    verification_status = verification_res.get("status", "IDLE")
+
+                    if raw_gesture != "NONE":
+                        logger.info(f"[GESTURE DEBUG] Verified gesture confirmed: {raw_gesture}")
                         latched_gesture = raw_gesture
                         gesture_latch_remaining = GESTURE_LATCH_FRAMES
                     
@@ -767,8 +776,9 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                         if current_time - last_user_check_time > 4.0:
                             last_user_check_time = current_time
                             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                            faces = face_cascade.detectMultiScale(
-                                gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60)
+                            faces = await asyncio.to_thread(
+                                face_cascade.detectMultiScale,
+                                gray, 1.1, 5, 0, (60, 60)
                             )
                             
                             detected_user = "Unknown"
@@ -907,6 +917,9 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                 "agenda": agenda_payload if agenda_payload else "CACHED_NOMINAL",
                 "gestures": {
                     "activeGesture": active_gesture,
+                    "verifyingGesture": verifying_gesture if 'verifying_gesture' in locals() else "NONE",
+                    "progress": verification_progress if 'verification_progress' in locals() else 0.0,
+                    "status": verification_status if 'verification_status' in locals() else "IDLE",
                     "power_state": "WAKE"
                 },
                 "identity": identity_payload,
@@ -922,7 +935,7 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
             }
             
             await websocket.send_json(outbound_packet)
-            await asyncio.sleep(0.03)  # Throttle execution loop to yield ~30 FPS on the CPU
+            await asyncio.sleep(0.05)  # Yield ~20 FPS for low CPU load and smooth streaming
             
     except WebSocketDisconnect:
         logger.info("WebSocket connection disconnected.")

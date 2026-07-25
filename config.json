@@ -20,6 +20,7 @@
 		"horizontal_threshold": 0.08,
 		"vertical_threshold": 0.08,
 		"cooldown_frames": 6,
+		"verification_frames": 8,
 		"only_read_fingers": true,
 		"_note": "only_read_fingers reads 0-5 finger counts."
 	},

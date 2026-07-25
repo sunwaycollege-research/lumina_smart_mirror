@@ -6,7 +6,7 @@ from gesture_detector import GestureDetector
 
 class GestureDetectorTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.detector = GestureDetector(cooldown_frames=2, window_size=3)
+        self.detector = GestureDetector(cooldown_frames=2, window_size=3, verification_frames=3)
 
     def _make_hand_with_fingers(self, extended_count: int, handedness: str = "Right") -> dict:
         landmarks = [{"x": 0.5, "y": 0.5, "z": 0.0} for _ in range(21)]
@@ -37,7 +37,7 @@ class GestureDetectorTests(unittest.TestCase):
     def test_closed_fist(self) -> None:
         hand = self._make_hand_with_fingers(0)
         res = None
-        for _ in range(3):
+        for _ in range(4):
             g = self.detector.detect([hand])
             if g:
                 res = g
@@ -46,7 +46,7 @@ class GestureDetectorTests(unittest.TestCase):
     def test_one_finger(self) -> None:
         hand = self._make_hand_with_fingers(1)
         res = None
-        for _ in range(3):
+        for _ in range(4):
             g = self.detector.detect([hand])
             if g:
                 res = g
@@ -55,7 +55,7 @@ class GestureDetectorTests(unittest.TestCase):
     def test_two_fingers(self) -> None:
         hand = self._make_hand_with_fingers(2)
         res = None
-        for _ in range(3):
+        for _ in range(4):
             g = self.detector.detect([hand])
             if g:
                 res = g
@@ -64,7 +64,7 @@ class GestureDetectorTests(unittest.TestCase):
     def test_three_fingers(self) -> None:
         hand = self._make_hand_with_fingers(3)
         res = None
-        for _ in range(3):
+        for _ in range(4):
             g = self.detector.detect([hand])
             if g:
                 res = g
@@ -73,7 +73,7 @@ class GestureDetectorTests(unittest.TestCase):
     def test_four_fingers(self) -> None:
         hand = self._make_hand_with_fingers(4)
         res = None
-        for _ in range(3):
+        for _ in range(4):
             g = self.detector.detect([hand])
             if g:
                 res = g
@@ -82,7 +82,7 @@ class GestureDetectorTests(unittest.TestCase):
     def test_five_fingers(self) -> None:
         hand = self._make_hand_with_fingers(5)
         res = None
-        for _ in range(3):
+        for _ in range(4):
             g = self.detector.detect([hand])
             if g:
                 res = g
@@ -94,6 +94,31 @@ class GestureDetectorTests(unittest.TestCase):
         self.detector.detect(None)
         res = self.detector.detect([hand])
         self.assertIsNone(res)
+
+    def test_continuous_verification_progress(self) -> None:
+        hand = self._make_hand_with_fingers(3)
+        
+        # Frame 1: Smoothing deque primes
+        v0 = self.detector.process_verification([hand])
+        self.assertEqual(v0["status"], "IDLE")
+
+        # Frame 2: Candidate established, count = 1 (progress = 1/3 = 0.33)
+        v1 = self.detector.process_verification([hand])
+        self.assertEqual(v1["status"], "VERIFYING")
+        self.assertEqual(v1["verifying_gesture"], "THREE_FINGERS")
+        self.assertEqual(v1["progress"], 0.33)
+        self.assertEqual(v1["active_gesture"], "NONE")
+
+        # Frame 3: Count = 2 (progress = 2/3 = 0.67)
+        v2 = self.detector.process_verification([hand])
+        self.assertEqual(v2["status"], "VERIFYING")
+        self.assertEqual(v2["progress"], 0.67)
+
+        # Frame 4: Count = 3 (progress = 3/3 = 1.0 -> CONFIRMED!)
+        v3 = self.detector.process_verification([hand])
+        self.assertEqual(v3["status"], "CONFIRMED")
+        self.assertEqual(v3["progress"], 1.0)
+        self.assertEqual(v3["active_gesture"], "THREE_FINGERS")
 
 
 if __name__ == "__main__":

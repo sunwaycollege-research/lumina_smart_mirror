@@ -223,10 +223,13 @@ Module.register("MMM-LuminaDashboard", {
                 self.biometricState = payload.biometrics;
             }
             
-            // Map active gesture inputs
+            // Map active gesture inputs with continuous verification HUD
             if (payload.gestures) {
                 self.gestureState = payload.gestures;
-                self.handleIncomingGesture(payload.gestures.activeGesture);
+                self.updateGestureVerificationHUD(payload.gestures);
+                if (payload.gestures.activeGesture && payload.gestures.activeGesture !== "NONE") {
+                    self.handleIncomingGesture(payload.gestures.activeGesture);
+                }
             }
 
             // Map CPU and Memory stats from system load
@@ -250,6 +253,21 @@ Module.register("MMM-LuminaDashboard", {
                     const isRecognized = payload.identity.currentUser && payload.identity.currentUser !== "Searching..." && payload.identity.currentUser !== "Guest" && payload.identity.currentUser !== "";
                     if (isRecognized || wasRecognized) {
                         shouldUpdateDom = true;
+                    }
+                }
+            }
+            
+            // Map face registration state
+            if (payload.registration) {
+                const statusEl = document.getElementById("face-reg-status");
+                if (statusEl) {
+                    if (payload.registration.active) {
+                        statusEl.style.display = "block";
+                        statusEl.innerText = `${payload.registration.status_message} (${payload.registration.samples_captured}/5)`;
+                    } else if (payload.registration.status_message && payload.registration.status_message.includes("successful")) {
+                        statusEl.style.display = "block";
+                        statusEl.style.color = "#10b981";
+                        statusEl.innerText = "✅ Biometric face scan complete! Profile registered.";
                     }
                 }
             }
@@ -327,24 +345,97 @@ Module.register("MMM-LuminaDashboard", {
         }, 4500);
     },
 
+    // Render continuous gesture verification HUD card with animated progress fill
+    updateGestureVerificationHUD: function(gestures) {
+        if (!gestures) return;
+        let hud = document.querySelector(".lumina-gesture-verifier-hud");
+        if (!hud) {
+            hud = document.createElement("div");
+            hud.className = "lumina-gesture-verifier-hud";
+            document.body.appendChild(hud);
+        }
+
+        const status = gestures.status || "IDLE";
+        const vGesture = gestures.verifyingGesture || "NONE";
+        const actGesture = gestures.activeGesture || "NONE";
+        const progress = gestures.progress || 0;
+        const pct = Math.round(progress * 100);
+
+        if (status === "VERIFYING" && vGesture !== "NONE" && pct > 0) {
+            hud.innerHTML = `
+                <div class="hud-verifier-content">
+                    <div class="hud-verifier-header">
+                        <span class="hud-pulse-ring"></span>
+                        <span class="hud-verifier-title">VERIFYING GESTURE</span>
+                        <span class="hud-verifier-pct">${pct}%</span>
+                    </div>
+                    <div class="hud-verifier-gesture">${vGesture.replace("_", " ")}</div>
+                    <div class="hud-verifier-track">
+                        <div class="hud-verifier-fill" style="width: ${pct}%;"></div>
+                    </div>
+                    <div class="hud-verifier-hint">Hold position steadily to confirm action...</div>
+                </div>
+            `;
+            hud.classList.add("active");
+            hud.classList.remove("confirmed");
+        } else if (status === "CONFIRMED" && (actGesture !== "NONE" || vGesture !== "NONE")) {
+            const confirmedName = actGesture !== "NONE" ? actGesture : vGesture;
+            hud.innerHTML = `
+                <div class="hud-verifier-content confirmed">
+                    <div class="hud-verifier-header">
+                        <span class="hud-check-icon">✓</span>
+                        <span class="hud-verifier-title" style="color: #10b981;">GESTURE CONFIRMED</span>
+                        <span class="hud-verifier-pct">100%</span>
+                    </div>
+                    <div class="hud-verifier-gesture" style="color: #10b981;">${confirmedName.replace("_", " ")}</div>
+                    <div class="hud-verifier-track">
+                        <div class="hud-verifier-fill confirmed" style="width: 100%;"></div>
+                    </div>
+                </div>
+            `;
+            hud.classList.add("active", "confirmed");
+            if (this._hudHideTimeout) clearTimeout(this._hudHideTimeout);
+            this._hudHideTimeout = setTimeout(() => {
+                hud.classList.remove("active", "confirmed");
+            }, 1200);
+        } else if (status === "IDLE" || pct === 0) {
+            if (!hud.classList.contains("confirmed")) {
+                hud.classList.remove("active");
+            }
+        }
+    },
+
+    // DOM element caching helper for high-frequency updates
+    getCachedElement: function(selector, parent) {
+        if (!this.domCache) this.domCache = {};
+        const cached = this.domCache[selector];
+        if (cached && document.body.contains(cached)) {
+            return cached;
+        }
+        const root = parent || document;
+        const el = root.querySelector(selector);
+        if (el) this.domCache[selector] = el;
+        return el;
+    },
+
     // Updates high-frequency elements in-place on the DOM to prevent screen flickering
     updateRealtimeFields: function(payload) {
-        const wrapper = document.querySelector(".lumina-dashboard-wrapper");
+        const wrapper = this.getCachedElement(".lumina-dashboard-wrapper");
         if (!wrapper) return;
 
         // 1. Update Left Column Status table
         if (this.activeSection === -1) {
-            const userNameVal = wrapper.querySelector(".status-username-val");
+            const userNameVal = this.getCachedElement(".status-username-val", wrapper);
             if (userNameVal && payload.identity) {
                 userNameVal.innerText = payload.identity.currentUser;
             }
 
-            const valUser = wrapper.querySelector(".val-user");
+            const valUser = this.getCachedElement(".val-user", wrapper);
             if (valUser && payload.identity) {
                 valUser.innerHTML = `${payload.identity.currentUser} <span class="status-dot green"></span>`;
             }
 
-            const heartVal = wrapper.querySelector(".status-heart-val");
+            const heartVal = this.getCachedElement(".status-heart-val", wrapper);
             if (heartVal && payload.biometrics) {
                 let heartDisplay = payload.biometrics.bpm;
                 if (typeof heartDisplay === "number") {
@@ -353,13 +444,23 @@ Module.register("MMM-LuminaDashboard", {
                 heartVal.innerText = heartDisplay;
             }
             
-            const gestureVal = wrapper.querySelector(".status-gesture-val");
+            const gestureVal = this.getCachedElement(".status-gesture-val", wrapper);
             if (gestureVal && payload.gestures) {
+                const status = payload.gestures.status || "IDLE";
                 const act = payload.gestures.activeGesture;
-                gestureVal.innerText = act === "NONE" ? "READY" : act.replace("_", " ");
+                const vAct = payload.gestures.verifyingGesture;
+                const pct = Math.round((payload.gestures.progress || 0) * 100);
+
+                if (status === "VERIFYING" && vAct !== "NONE" && pct > 0) {
+                    gestureVal.innerHTML = `<span style="color: #f59e0b;">VERIFYING ${vAct.replace("_", " ")} (${pct}%)</span> <span class="status-dot orange"></span>`;
+                } else if (status === "CONFIRMED" || (act && act !== "NONE")) {
+                    gestureVal.innerHTML = `<span style="color: #10b981; font-weight: 600;">VERIFIED: ${(act || vAct).replace("_", " ")}</span> <span class="status-dot green"></span>`;
+                } else {
+                    gestureVal.innerHTML = `READY <span class="status-dot blue"></span>`;
+                }
             }
 
-            const greetingEl = document.querySelector(".greeting-text");
+            const greetingEl = this.getCachedElement(".greeting-text");
             if (greetingEl && payload.identity) {
                 const now = new Date();
                 const hour = now.getHours();
@@ -372,39 +473,82 @@ Module.register("MMM-LuminaDashboard", {
         }
 
         // 2. Update Health tab if active
-        if (this.activeSection === 2) {
-            let heartDisplay = payload.biometrics ? payload.biometrics.bpm : 72;
+        if (this.activeSection === 2 && payload.biometrics) {
+            let heartDisplay = payload.biometrics.bpm;
             if (typeof heartDisplay === "number") {
                 heartDisplay = `${Math.round(heartDisplay)} BPM`;
             }
-            const pulseVal = wrapper.querySelector(".pulse-bpm-val");
+            const pulseVal = this.getCachedElement(".pulse-bpm-val", wrapper);
             if (pulseVal) pulseVal.innerText = heartDisplay;
 
+            const hrvVal = this.getCachedElement(".val-hrv", wrapper);
+            if (hrvVal && payload.biometrics.hrv) hrvVal.innerText = `${payload.biometrics.hrv} ms`;
+
+            const stressVal = this.getCachedElement(".val-stress", wrapper);
+            if (stressVal && payload.biometrics.stress) stressVal.innerText = `${payload.biometrics.stress}%`;
+
+            const respVal = this.getCachedElement(".val-resp", wrapper);
+            if (respVal && payload.biometrics.resp) respVal.innerText = `${payload.biometrics.resp} RPM`;
+
             const subMetricVals = wrapper.querySelectorAll(".health-sub-metric .sub-metric-val");
-            if (subMetricVals.length >= 2 && payload.biometrics) {
+            if (subMetricVals.length >= 2) {
                 subMetricVals[0].innerText = payload.biometrics.mood;
                 subMetricVals[1].innerText = payload.biometrics.anxiety;
-                if (payload.biometrics.anxiety === "HIGH") {
-                    subMetricVals[1].className = "sub-metric-val";
-                    subMetricVals[1].style.color = "#ef4444";
-                } else {
-                    subMetricVals[1].className = "sub-metric-val";
-                    subMetricVals[1].style.color = "#3b82f6";
+                subMetricVals[1].style.color = payload.biometrics.anxiety === "HIGH" ? "#ef4444" : "#10b981";
+            }
+
+            // Draw rPPG pulse waveform on canvas
+            const canvas = this.getCachedElement("#lumina-rppg-canvas");
+            if (canvas && payload.biometrics.waveform) {
+                const ctx = canvas.getContext("2d");
+                const w = canvas.width;
+                const h = canvas.height;
+                ctx.clearRect(0, 0, w, h);
+
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+                ctx.lineWidth = 1;
+                for (let x = 0; x < w; x += 30) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, h);
+                    ctx.stroke();
+                }
+
+                const points = payload.biometrics.waveform;
+                if (points.length > 1) {
+                    ctx.strokeStyle = "#d4af37";
+                    ctx.lineWidth = 2.5;
+                    ctx.shadowColor = "#d4af37";
+                    ctx.shadowBlur = 8;
+                    ctx.beginPath();
+
+                    const minV = Math.min(...points);
+                    const maxV = Math.max(...points);
+                    const range = (maxV - minV) || 1.0;
+
+                    points.forEach((val, i) => {
+                        const px = (i / (points.length - 1)) * w;
+                        const py = h - 15 - ((val - minV) / range) * (h - 30);
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    });
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
                 }
             }
         }
 
         // 3. Update Status Bar system performance stats
         if (payload.system_stats) {
-            const cpuVal = wrapper.querySelector(".val-cpu");
+            const cpuVal = this.getCachedElement(".val-cpu", wrapper);
             if (cpuVal) cpuVal.innerText = `${payload.system_stats.cpu}%`;
-            const ramVal = wrapper.querySelector(".val-ram");
+            const ramVal = this.getCachedElement(".val-ram", wrapper);
             if (ramVal) ramVal.innerText = `${payload.system_stats.ram}%`;
         }
 
         // 4. Update Status Bar Heart rate
         if (payload.biometrics) {
-            const barHeart = wrapper.querySelector(".val-heart-bar");
+            const barHeart = this.getCachedElement(".val-heart-bar", wrapper);
             if (barHeart) {
                 let heartDisplay = payload.biometrics.bpm;
                 if (typeof heartDisplay === "number") {
@@ -1341,33 +1485,50 @@ Module.register("MMM-LuminaDashboard", {
         }
 
         container.innerHTML = `
-            <div class="health-grid-layout" style="display:grid; grid-template-columns: 1fr 1.1fr; gap: 30px; height: 100%;">
-                <div class="health-live-card glass-card" style="padding: 24px; display:flex; flex-direction:column; gap: 20px;">
-                    <div class="live-pulse-container" style="display:flex; align-items:center;">
-                        <span style="display:inline-block; width:48px; height:48px; color:var(--gold-accent);">${ICONS.HEART}</span>
-                        <div style="margin-left: 16px;">
-                            <span class="pulse-bpm-val" style="font-size: 3rem; font-weight: 300; font-family:'Outfit'; color: #fff;">${heartDisplay}</span>
-                            <span style="font-size: 14px; letter-spacing: 1.5px; display:block; color:var(--text-muted); font-family:'Outfit';">LIVE PULSE</span>
+            <div class="health-grid-layout" style="display:grid; grid-template-columns: 1fr 1.1fr; gap: 24px; height: 100%;">
+                <div class="health-live-card glass-card" style="padding: 24px; display:flex; flex-direction:column; gap: 16px;">
+                    <div style="font-size: 1.2rem; font-family: 'Outfit'; font-weight: 500; color: var(--gold-accent); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;">
+                        <span>${ICONS.HEALTH} LIVE OPTICAL rPPG BIOMETRICS</span>
+                        <span style="font-size: 0.75rem; color: #10b981; font-weight: 600; padding: 2px 8px; background: rgba(16,185,129,0.1); border-radius: 8px;">CHROM ACTIVE</span>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 14px;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block; text-transform: uppercase;">Heart Rate</span>
+                            <span class="pulse-bpm-val" style="font-size: 2.2rem; font-weight: 300; font-family:'Outfit'; color: #fff;">${heartDisplay}</span>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 14px;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block; text-transform: uppercase;">HRV (SDNN)</span>
+                            <span class="val-hrv" style="font-size: 2.2rem; font-weight: 300; font-family:'Outfit'; color: var(--gold-accent);">${this.biometricState.hrv || 45.0} ms</span>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 14px;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block; text-transform: uppercase;">Stress Index</span>
+                            <span class="val-stress" style="font-size: 2.2rem; font-weight: 300; font-family:'Outfit'; color: #10b981;">${this.biometricState.stress || 18.5}%</span>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 14px;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block; text-transform: uppercase;">Respiration</span>
+                            <span class="val-resp" style="font-size: 2.2rem; font-weight: 300; font-family:'Outfit'; color: #3b82f6;">${this.biometricState.resp || 16.0} RPM</span>
                         </div>
                     </div>
                     
-                    <svg class="ecg-wave-svg" viewBox="0 0 300 60" style="height: 100px; margin: 10px 0;">
-                        <path d="M0,30 L50,30 L60,10 L70,50 L80,30 L120,30 L130,5 L140,55 L150,30 L200,30 L210,15 L220,45 L230,30 L300,30" fill="none" stroke="var(--gold-accent)" stroke-width="1.8"/>
-                    </svg>
+                    <div>
+                        <span style="font-size: 0.8rem; color: var(--gold-accent); letter-spacing: 0.5px; font-weight: 600; display: block; margin-bottom: 6px;">LIVE rPPG BLOOD VOLUME PULSE WAVEFORM (30 FPS)</span>
+                        <canvas id="lumina-rppg-canvas" width="550" height="130" style="width: 100%; height: 130px; border-radius: 14px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06);"></canvas>
+                    </div>
 
-                    <div style="display:flex; flex-direction:column; gap: 14px; margin-top: 10px;">
-                        <div style="font-size: 16px; padding-bottom: 8px; border-bottom:1px solid rgba(255,255,255,0.04); display:flex; justify-content:space-between;">
+                    <div style="display:flex; flex-direction:column; gap: 10px; margin-top: 4px;">
+                        <div style="font-size: 15px; padding-bottom: 6px; border-bottom:1px solid rgba(255,255,255,0.04); display:flex; justify-content:space-between;">
                             <span style="color:var(--text-muted);">MOOD MATRIX:</span>
                             <span class="sub-metric-val" style="color: #fff; font-weight: 500;">${this.biometricState.mood}</span>
                         </div>
-                        <div style="font-size: 16px; padding-bottom: 8px; display:flex; justify-content:space-between;">
+                        <div style="font-size: 15px; padding-bottom: 6px; display:flex; justify-content:space-between;">
                             <span style="color:var(--text-muted);">ANXIETY DIST:</span>
                             <span class="sub-metric-val" style="color: ${this.biometricState.anxiety === 'HIGH' ? '#ef4444' : '#10b981'}; font-weight: 500;">${this.biometricState.anxiety}</span>
                         </div>
                     </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 24px; height: 100%;">
+                <div style="display: flex; flex-direction: column; gap: 20px; height: 100%;">
                     ${svgGraph}
 
                     <div class="health-history-card glass-card" style="padding: 20px; flex: 1; display:flex; flex-direction:column; min-height: 0;">
@@ -1410,7 +1571,7 @@ Module.register("MMM-LuminaDashboard", {
                         </div>
                         <div style="font-size: 16px; margin-top: 10px; line-height: 1.5; color:var(--text-muted);">${item.description}</div>
                         <div style="font-size: 14px; margin-top: 14px; display:flex; justify-content:space-between; color:var(--text-muted);">
-                            <span>BBC NEWS</span>
+                            <span>GOOGLE NEWS NEPAL</span>
                             <span>${item.pubDate}</span>
                         </div>
                     </div>

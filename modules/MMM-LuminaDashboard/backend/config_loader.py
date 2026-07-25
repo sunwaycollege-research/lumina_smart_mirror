@@ -43,6 +43,8 @@ DEFAULTS = {
         "enable_static_poses": True,
         # Restricts detection to finger counting only (ignores motion/swipe gestures)
         "only_read_fingers": True,
+        # Number of continuous matching frames required to confirm a gesture
+        "verification_frames": 8,
     },
     "health_monitor": {
         "min_signal_quality": 0.35,

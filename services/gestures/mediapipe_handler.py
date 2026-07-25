@@ -79,6 +79,7 @@ class MediapipeHandler:
 
         # Simple logger
         self.logger = logging.getLogger(self.__class__.__name__)
+        self._last_timestamp_ms = 0
 
     def init_landmarker(self) -> None:
         """Initialize only the MediaPipe HandLandmarker without opening the camera.
@@ -107,13 +108,13 @@ class MediapipeHandler:
         
         options = vision.HandLandmarkerOptions(
             base_options=mp_python.BaseOptions(model_asset_path=model_path),
-            running_mode=vision.RunningMode.IMAGE,
+            running_mode=vision.RunningMode.VIDEO,
             num_hands=self.max_num_hands,
             min_hand_detection_confidence=self.detection_confidence,
             min_hand_presence_confidence=self.tracking_confidence,
         )
         self._hand_landmarker = vision.HandLandmarker.create_from_options(options)
-        self.logger.info("MediaPipe HandLandmarker initialized")
+        self.logger.info("MediaPipe HandLandmarker (VIDEO mode) initialized")
 
     def init_camera(self) -> None:
         """Open the default webcam and initialize MediaPipe HandLandmarker.
@@ -138,6 +139,7 @@ class MediapipeHandler:
 
         Does not capture from internal capture object.
         """
+        import time
         if self._hand_landmarker is None:
             raise RuntimeError("MediaPipe HandLandmarker not initialized. Call init_landmarker() first.")
 
@@ -149,7 +151,13 @@ class MediapipeHandler:
 
         # Create a MediaPipe Image object for processing.
         mp_image = Image(image_format=ImageFormat.SRGB, data=frame_rgb)
-        hand_landmarker_result = self._hand_landmarker.detect(mp_image)
+
+        timestamp_ms = int(time.time() * 1000)
+        if timestamp_ms <= self._last_timestamp_ms:
+            timestamp_ms = self._last_timestamp_ms + 1
+        self._last_timestamp_ms = timestamp_ms
+
+        hand_landmarker_result = self._hand_landmarker.detect_for_video(mp_image, timestamp_ms)
 
         hands_output: List[Dict[str, Any]] = []
         image_height, image_width = frame.shape[:2]
