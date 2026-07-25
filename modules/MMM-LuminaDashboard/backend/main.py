@@ -485,7 +485,7 @@ async def get_nepal_weather():
                     "air_quality": "Good"
                 }
         except Exception as e:
-            print(f"[WEATHER FETCH ERROR] {e}")
+            logger.error(f"[WEATHER FETCH ERROR] {e}")
             
     return {
         "city": "Kathmandu, Nepal",
@@ -497,23 +497,38 @@ async def get_nepal_weather():
         "air_quality": "Good"
     }
 
-async def _fetch_rss_items(url: str) -> list | None:
+def _clean_xml_text(xml_str: str) -> str:
+    import re
+    entities = {
+        '&nbsp;': ' ', '&copy;': '(c)', '&reg;': '(r)', '&trade;': '(tm)',
+        '&mdash;': '-', '&ndash;': '-', '&hellip;': '...', '&quot;': '"',
+        '&apos;': "'", '&amp;': '&'
+    }
+    xml_clean = re.sub(r'&(?!([a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);)', '&amp;', xml_str)
+    for ent, val in entities.items():
+        if ent != '&amp;':
+            xml_clean = xml_clean.replace(ent, val)
+    return xml_clean
+
+async def _fetch_rss_items(url: str, source_name: str = "Nepali News") -> list | None:
     """Fetches and parses one RSS feed. Returns None (not []) on any failure."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         try:
-            headers = {"User-Agent": "Mozilla/5.0 (Windows / Smart Mirror) Lumina OS Engine"}
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Lumina OS Engine"}
             response = await client.get(url, headers=headers, timeout=10.0)
             if response.status_code != 200:
                 return None
 
             import xml.etree.ElementTree as ET
-            root = ET.fromstring(response.text)
+            cleaned_text = _clean_xml_text(response.text)
+            root = ET.fromstring(cleaned_text)
             items = []
             for item in root.findall(".//item"):
                 title = item.find("title")
                 description = item.find("description")
                 link = item.find("link")
                 pub_date = item.find("pubDate")
+                category = item.find("category")
 
                 raw_desc = description.text.strip() if description is not None and description.text else ""
                 clean_desc = _clean_html(raw_desc)
@@ -522,30 +537,37 @@ async def _fetch_rss_items(url: str) -> list | None:
                     "title": title.text.strip() if title is not None and title.text else "No Title",
                     "description": clean_desc if clean_desc else "Live Nepal & World News update.",
                     "link": link.text.strip() if link is not None and link.text else "",
-                    "pubDate": pub_date.text.strip() if pub_date is not None and pub_date.text else ""
+                    "pubDate": pub_date.text.strip() if pub_date is not None and pub_date.text else "",
+                    "source": source_name,
+                    "category": category.text.strip() if category is not None and category.text else "Nepal"
                 })
-            return items[:12] if items else None
+            return items[:15] if items else None
         except Exception as e:
-            print(f"[NEWS FETCH ERROR] {url}: {e}")
+            logger.error(f"[NEWS FETCH ERROR] {url}: {e}")
             return None
+
+
+@app.get("/api/dashboard/nepali-news")
+async def get_nepali_news():
+    """Fetches top headlines from the primary single working News API (Google News Nepal RSS)."""
+    primary_url = app_config.get("news", {}).get("primary_rss_url", "https://news.google.com/rss/search?q=Nepal&hl=en-NP&gl=NP&ceid=NP:en")
+    fallback_url = app_config.get("news", {}).get("fallback_rss_url", "https://www.onlinekhabar.com/feed")
+
+    items = await _fetch_rss_items(primary_url, "Google News Nepal")
+    if items:
+        return items[:20]
+
+    fallback_items = await _fetch_rss_items(fallback_url, "OnlineKhabar")
+    if fallback_items:
+        return fallback_items[:20]
+
+    return get_fallback_news()
 
 
 @app.get("/api/dashboard/news")
 async def get_dashboard_news():
-    """Fetches the configured news RSS feed(s) and parses headlines to JSON."""
-    primary_url = app_config.get("news", {}).get("primary_rss_url", "https://news.google.com/rss/search?q=Nepal&hl=en-NP&gl=NP&ceid=NP:en")
-    fallback_url = app_config.get("news", {}).get("fallback_rss_url", "https://www.onlinekhabar.com/feed")
-
-    items = await _fetch_rss_items(primary_url)
-    if items:
-        return items
-
-    if fallback_url and fallback_url != primary_url:
-        items = await _fetch_rss_items(fallback_url)
-        if items:
-            return items
-
-    return get_fallback_news()
+    """Fetches the configured single news RSS feed and parses headlines to JSON."""
+    return await get_nepali_news()
 
 @app.post("/api/register/start")
 def start_registration(req: RegisterRequest):
@@ -773,7 +795,7 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                     else:
                         # Regular Face recognition checks
                         current_time = time.time()
-                        if current_time - last_user_check_time > 4.0:
+                        if current_time - last_user_check_time > 1.5:
                             last_user_check_time = current_time
                             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                             faces = await asyncio.to_thread(
@@ -788,7 +810,7 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                                 # A face is detected. Reset miss count because a face is seen.
                                 miss_count = 0
                                 
-                                result = await asyncio.to_thread(face_recognizer.recognize_face, frame, faces[0], 0.4)
+                                result = await asyncio.to_thread(face_recognizer.recognize_face, frame, faces[0], 0.52)
                                 if result.get("recognized"):
                                     detected_user = result["user"]
                                     is_recognized = True
@@ -897,24 +919,25 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                     )
             
             # Every 150 frames, asynchronously update calendar events
-            agenda_payload = []
-            if ticker_counter % 150 == 0:
-                agenda_payload = await cal_engine.fetch_and_parse_agenda()
-            
+            if ticker_counter % 150 == 0 or 'cached_agenda_data' not in locals():
+                fetched_agenda = await cal_engine.fetch_and_parse_agenda()
+                if fetched_agenda:
+                    cached_agenda_data = fetched_agenda
+                elif 'cached_agenda_data' not in locals():
+                    cached_agenda_data = []
+
+            active_profile = await asyncio.to_thread(profile_manager.get_active_profile, recognized_user) if recognized_user not in ["Unknown", "Guest"] else None
             identity_payload = {
                 "currentUser": current_user_name,
-                # Raw registry key (e.g. "Sulav"), as opposed to the display
-                # name (e.g. "Dawgybey"). log_health_metrics() below writes
-                # under this same key - the frontend must query summaries
-                # with THIS value, not the display name, or it'll look up
-                # a username that was never actually written to the DB.
                 "currentUserKey": recognized_user if recognized_user not in ["Unknown", "Guest"] else "",
-                "confidence": identity_confidence
+                "confidence": identity_confidence,
+                "profile": active_profile,
+                "welcomeMessage": active_profile.get("welcome_message", "") if active_profile else ""
             }
             
             outbound_packet = {
                 "biometrics": vision_data,
-                "agenda": agenda_payload if agenda_payload else "CACHED_NOMINAL",
+                "agenda": cached_agenda_data,
                 "gestures": {
                     "activeGesture": active_gesture,
                     "verifyingGesture": verifying_gesture if 'verifying_gesture' in locals() else "NONE",

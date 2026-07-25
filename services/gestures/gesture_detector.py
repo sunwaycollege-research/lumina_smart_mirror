@@ -91,7 +91,7 @@ class GestureDetector:
             dist_tip_to_index_mcp = math.hypot(x4 - x5, y4 - y5)
             dist_mcp_to_index_mcp = math.hypot(x2 - x5, y2 - y5)
             
-            if dist_tip_to_index_mcp > dist_mcp_to_index_mcp + 0.03:
+            if (dist_tip_to_index_mcp > dist_mcp_to_index_mcp * 1.1) or (dist_tip_to_index_mcp - dist_mcp_to_index_mcp > 0.015):
                 extended += 1
                     
             return extended

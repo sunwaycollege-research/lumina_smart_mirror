@@ -6,13 +6,35 @@
 		"timezone": "Asia/Kathmandu"
 	},
 	"calendar": {
-		"ical_url": "https://ics.calendarlabs.com/76/mm3137/US_Holidays.ics",
+		"ical_url": "https://calendar.google.com/calendar/ical/sulavinjob%40gmail.com/public/basic.ics",
 		"_how_to_use_google_calendar": "Open Google Calendar > Settings > Integrate calendar > Public address in iCal format."
 	},
 	"news": {
 		"primary_rss_url": "https://news.google.com/rss/search?q=Nepal&hl=en-NP&gl=NP&ceid=NP:en",
 		"fallback_rss_url": "https://www.onlinekhabar.com/feed",
-		"_note": "primary_rss_url is tried first - Google News Nepal / OnlineKhabar."
+		"nepali_sources": [
+			{
+				"name": "Google News Nepal",
+				"url": "https://news.google.com/rss/search?q=Nepal&hl=en-NP&gl=NP&ceid=NP:en",
+				"lang": "en"
+			},
+			{
+				"name": "OnlineKhabar",
+				"url": "https://www.onlinekhabar.com/feed",
+				"lang": "np"
+			},
+			{
+				"name": "Setopati",
+				"url": "https://www.setopati.com/feed",
+				"lang": "np"
+			},
+			{
+				"name": "The Himalayan Times",
+				"url": "https://thehimalayantimes.com/feed",
+				"lang": "en"
+			}
+		],
+		"_note": "Nepali news RSS feeds configuration for multi-source aggregation."
 	},
 	"gestures": {
 		"min_cutoff": 1.0,

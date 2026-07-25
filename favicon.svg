@@ -1,5 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <path fill="#797676" d="M9.18 35.96 3.13 16.72h-.19l.16 2.57.03 3.38v13.3H1V14h3.45l5.68 18h.15l5.8-18h3.4v22h-2.26V19.29l.15-2.57h-.12L11.08 36Zm20.84 0-6.06-19.24h-.08l.15 2.57.04 3.38v13.3H21.9V14h3.45l5.68 18h.12L37 14h3.41v22H38.1V22.48l.04-3.2.15-2.56h-.12L31.96 36Z"/>
-  <path fill="#a6a3a3" d="M47 19.84h-5.73v-1.1l2.23-2.83q.67-.8 1.12-1.43.45-.6.67-1.21.22-.64.22-1.36 0-.87-.41-1.32-.44-.46-1.11-.46-.63 0-1.12.27-.45.26-.93.75l-.6-.9q.53-.5 1.16-.87.67-.38 1.49-.38 1.23 0 1.9.76.74.75.74 2.07 0 .87-.3 1.59-.3.75-.79 1.43-.47.76-1.14 1.51l-1.8 2.23v.04h4.36Z"/>
-</svg>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="glass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"></stop>
+      <stop offset="100%" stop-color="#cfcfcf"></stop>
+    </linearGradient>
+  </defs>
 
+  <!-- Outer Frame -->
+  <rect x="76" y="76" width="360" height="360" rx="48" fill="none" stroke="url(#glass)" stroke-width="14"></rect>
+
+  <!-- Inner Reflection -->
+  <path d="M120 140
+           C165 105 225 95 310 110" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.45" fill="none"></path>
+
+  <!-- Stylized L -->
+  <path d="M180 160
+           V350
+           H320" fill="none" stroke="#ffffff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"></path>
+
+  <!-- Glow Ring -->
+  <circle cx="256" cy="256" r="170" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="22"></circle>
+
+  <!-- Accent Dot -->
+  <circle cx="330" cy="182" r="7" fill="#ffffff"></circle>
+</svg>

@@ -48,7 +48,9 @@ Module.register("MMM-LuminaDashboard", {
 
     // Inject third-party library JS CDNs if any
     getScripts: function() {
-        return [];
+        return [
+            "https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"
+        ];
     },
 
     // Initialize state components safely on boot
@@ -70,7 +72,24 @@ Module.register("MMM-LuminaDashboard", {
             confidence: 98 
         };
         this.agendaState = [];
-        this.newsState = [];
+        this.newsState = [
+            {
+                title: "Lumina Smart Mirror OS Operational",
+                description: "System booted successfully. Hybrid gesture and mouse control systems fully active.",
+                link: "https://lumina.smartmirror",
+                pubDate: "Just now",
+                source: "Google News Nepal",
+                category: "Nepal"
+            },
+            {
+                title: "Intelligent Schedule & Live Telemetry Engine Active",
+                description: "Interactive schedule manager syncs with public iCal services and biometric tracking.",
+                link: "https://lumina.smartmirror",
+                pubDate: "Just now",
+                source: "Google News Nepal",
+                category: "Nepal"
+            }
+        ];
         this.systemStats = {
             cpu: 24.5,
             ram: 68.2
@@ -115,8 +134,23 @@ Module.register("MMM-LuminaDashboard", {
 
         // Refresh news every 5 minutes and weather every 10 minutes
         const self = this;
+        setTimeout(() => { self.fetchLiveNews(); }, 3000);
         setInterval(() => { self.fetchLiveNews(); }, 300000);
         setInterval(() => { self.fetchNepalWeather(); }, 600000);
+
+        // Periodically purge past events every 30 seconds
+        setInterval(() => {
+            if (self.agendaState && self.agendaState.length > 0) {
+                const upcoming = self.getUpcomingEvents();
+                if (upcoming.length !== self.agendaState.length) {
+                    self.agendaState = upcoming;
+                    self.lastAgendaStr = JSON.stringify(self.agendaState);
+                    if (self.activeSection === 0 || self.activeSection === 1 || self.activeSection === -1) {
+                        self.updateDom();
+                    }
+                }
+            }
+        }, 30000);
 
         // Update landing page time dynamically every 1 second without full redrawing
         setInterval(() => { self.updateLandingPageClock(); }, 1000);
@@ -221,6 +255,7 @@ Module.register("MMM-LuminaDashboard", {
             // Map live high-frequency biometrics
             if (payload.biometrics) {
                 self.biometricState = payload.biometrics;
+                self.updateRealtimeFields(payload);
             }
             
             // Map active gesture inputs with continuous verification HUD
@@ -273,7 +308,7 @@ Module.register("MMM-LuminaDashboard", {
             }
             
             // Map calendar events
-            if (payload.agenda && payload.agenda !== "CACHED_NOMINAL") {
+            if (payload.agenda && Array.isArray(payload.agenda)) {
                 const agendaStr = JSON.stringify(payload.agenda);
                 if (self.lastAgendaStr !== agendaStr) {
                     self.lastAgendaStr = agendaStr;
@@ -591,6 +626,32 @@ Module.register("MMM-LuminaDashboard", {
         }
     },
 
+    // Filters agendaState to return only events whose end time hasn't passed relative to client clock
+    getUpcomingEvents: function() {
+        if (!this.agendaState || !Array.isArray(this.agendaState)) return [];
+        const now = new Date();
+        return this.agendaState.filter(evt => {
+            if (evt.isoEnd) {
+                const endDt = new Date(evt.isoEnd);
+                if (!isNaN(endDt.getTime())) {
+                    return endDt >= now;
+                }
+            }
+            if (evt.isoStart) {
+                const startDt = new Date(evt.isoStart);
+                if (!isNaN(startDt.getTime())) {
+                    if (evt.time === "All Day") {
+                        startDt.setHours(23, 59, 59, 999);
+                        return startDt >= now;
+                    } else {
+                        return new Date(startDt.getTime() + 3600000) >= now;
+                    }
+                }
+            }
+            return true;
+        });
+    },
+
     // Fetches user profile analytics
     fetchHistoricalSummary: function() {
         // IMPORTANT: use currentUserKey (the raw registry key the backend
@@ -633,21 +694,27 @@ Module.register("MMM-LuminaDashboard", {
             .catch(err => console.error("[LUMINA FRONTEND ERROR] Summary syncing dropped:", err));
     },
 
-    // Fetches live news feed
+    // Fetches live news feed from Nepali News API
     fetchLiveNews: function() {
-        fetch(`${this.config.apiBaseUrl}/api/dashboard/news`)
+        const self = this;
+        this.lastNewsFetch = Date.now();
+        fetch(`${this.config.apiBaseUrl}/api/dashboard/nepali-news`)
             .then(res => res.json())
             .then(data => {
-                const newsStr = JSON.stringify(data);
-                if (this.lastNewsStr !== newsStr) {
-                    this.lastNewsStr = newsStr;
-                    this.newsState = data;
-                    if (this.activeSection === 3 || this.activeSection === -1) {
-                        this.updateDom();
+                if (data && Array.isArray(data) && data.length > 0) {
+                    const newsStr = JSON.stringify(data);
+                    if (self.lastNewsStr !== newsStr) {
+                        self.lastNewsStr = newsStr;
+                        self.newsState = data;
+                        if (self.activeSection === 3 || self.activeSection === -1) {
+                            self.updateDom();
+                        }
                     }
                 }
             })
-            .catch(err => console.error("[LUMINA FRONTEND ERROR] News fetching failed:", err));
+            .catch(err => {
+                console.error("[LUMINA FRONTEND ERROR] News fetch failed:", err);
+            });
     },
 
     // Fetches live Nepal weather data
@@ -689,7 +756,7 @@ Module.register("MMM-LuminaDashboard", {
         const cardDetails = document.querySelector(".weather-details");
         if (cardDetails) {
             cardDetails.innerHTML = `
-                <div>${this.weatherState.city}</div>
+                <div>${this.weatherState.city} (${this.weatherState.condition})</div>
                 <div>Humidity: ${this.weatherState.humidity}</div>
                 <div>Air Quality: ${this.weatherState.air_quality}</div>
             `;
@@ -741,9 +808,9 @@ Module.register("MMM-LuminaDashboard", {
                 shouldUpdate = true;
             }
         } else if (Object.prototype.hasOwnProperty.call(FINGER_COUNT_SECTION, gesture)) {
-            // Only allow section opening when on the Home / Landing page
-            if (this.activeSection === -1) {
-                const targetSection = FINGER_COUNT_SECTION[gesture];
+            // Jump straight to target section (1=Calendar, 2=Schedule, 3=Health, 4=News, 5=Analytics) from anywhere
+            const targetSection = FINGER_COUNT_SECTION[gesture];
+            if (this.activeSection !== targetSection) {
                 this.landingSelectedIndex = targetSection;
                 this.activeSection = targetSection;
                 shouldUpdate = true;
@@ -965,26 +1032,29 @@ Module.register("MMM-LuminaDashboard", {
         ];
 
         let timelineHTML = `<div class="timeline-container"><div class="timeline-line"></div>`;
-        const events = (this.agendaState && this.agendaState.length > 0) ? this.agendaState.map((evt, idx) => ({
-            time: evt.start,
-            title: evt.title,
-            desc: evt.location,
-            duration: evt.priority === "HIGH" ? "60m" : "30m",
-            dot: ["blue", "green", "orange", "purple"][idx % 4]
-        })) : defaultEvents;
-
-        events.slice(0, 3).forEach(evt => {
-            timelineHTML += `
-                <div class="timeline-item">
-                    <div class="timeline-dot ${evt.dot}"></div>
-                    <div class="timeline-time">${evt.time}</div>
-                    <div class="timeline-content">
-                        <span class="timeline-title">${evt.title}</span>
+        const landingEvents = this.getUpcomingEvents();
+        if (landingEvents && landingEvents.length > 0) {
+            landingEvents.slice(0, 4).forEach((evt, idx) => {
+                const dot = ["blue", "green", "orange", "purple"][idx % 4];
+                const displayTime = (evt.time && evt.time !== "All Day") ? evt.time : evt.start;
+                timelineHTML += `
+                    <div class="timeline-item">
+                        <div class="timeline-dot ${dot}"></div>
+                        <div class="timeline-time">${displayTime}</div>
+                        <div class="timeline-content">
+                            <span class="timeline-title">${evt.title}</span>
+                        </div>
+                        <div class="timeline-duration" style="font-size:0.75rem; color:var(--text-muted);">${evt.location || 'Calendar'}</div>
                     </div>
-                    <div class="timeline-duration">${evt.duration}</div>
+                `;
+            });
+        } else {
+            timelineHTML += `
+                <div style="padding: 20px 0; text-align: center; color: var(--text-muted); font-size: 0.9rem;">
+                    No upcoming calendar events.
                 </div>
             `;
-        });
+        }
         timelineHTML += `</div>`;
 
         const quotes = [
@@ -1070,10 +1140,11 @@ Module.register("MMM-LuminaDashboard", {
                         <div class="overview-section">
                             <div class="section-subtitle">Weather</div>
                             <div class="weather-grid">
-                                <div class="weather-temp">26°C</div>
+                                <div class="weather-temp">${this.weatherState ? this.weatherState.temperature : "24°C"}</div>
                                 <div class="weather-details">
-                                    <div>Humidity: 65%</div>
-                                    <div>Air Quality: Good</div>
+                                    <div>${this.weatherState ? this.weatherState.city : "Kathmandu, Nepal"}</div>
+                                    <div>Humidity: ${this.weatherState ? this.weatherState.humidity : "65%"}</div>
+                                    <div>Air Quality: ${this.weatherState ? this.weatherState.air_quality : "Good"}</div>
                                 </div>
                             </div>
                         </div>
@@ -1081,17 +1152,37 @@ Module.register("MMM-LuminaDashboard", {
                         <!-- Today's Focus Section -->
                         <div class="overview-section">
                             <div class="section-subtitle">Today's Focus</div>
-                            <div class="focus-task">Product Strategy Review</div>
-                            <div class="countdown-timer">Starts in 42 mins</div>
+                            <div class="focus-task">${(() => {
+                                const upcoming = this.getUpcomingEvents();
+                                return (upcoming && upcoming.length > 0) ? upcoming[0].title : "No remaining events today";
+                            })()}</div>
+                            <div class="countdown-timer">${(() => {
+                                const upcoming = this.getUpcomingEvents();
+                                if (upcoming && upcoming.length > 0) {
+                                    const nextEvt = upcoming[0];
+                                    if (nextEvt.isoStart) {
+                                        const startDt = new Date(nextEvt.isoStart);
+                                        const diffMs = startDt.getTime() - Date.now();
+                                        if (diffMs > 0) {
+                                            const diffMins = Math.floor(diffMs / 60000);
+                                            if (diffMins < 60) return `Starts in ${diffMins} mins (${nextEvt.time})`;
+                                            return `Starts in ${(diffMins / 60).toFixed(1)}h (${nextEvt.time})`;
+                                        }
+                                        return `In Progress (${nextEvt.time})`;
+                                    }
+                                    return nextEvt.time || nextEvt.start;
+                                }
+                                return "Schedule active";
+                            })()}</div>
                         </div>
 
                         <!-- Productivity Stats Section -->
                         <div class="overview-section">
-                            <div class="section-subtitle">Productivity Stats</div>
+                            <div class="section-subtitle">Live Overview Stats</div>
                             <div class="stats-grid">
-                                <div class="stat-box"><span class="stat-val">8</span><span class="stat-lbl">Completed</span></div>
-                                <div class="stat-box"><span class="stat-val">4</span><span class="stat-lbl">Meetings</span></div>
-                                <div class="stat-box"><span class="stat-val">3.5h</span><span class="stat-lbl">Focus Time</span></div>
+                                <div class="stat-box"><span class="stat-val">${this.getUpcomingEvents().length}</span><span class="stat-lbl">Events Synced</span></div>
+                                <div class="stat-box"><span class="stat-val">${typeof this.biometricState.bpm === "number" ? Math.round(this.biometricState.bpm) + " BPM" : "72 BPM"}</span><span class="stat-lbl">Heart Rate</span></div>
+                                <div class="stat-box"><span class="stat-val">${this.biometricState.mood || "NEUTRAL"}</span><span class="stat-lbl">Mood State</span></div>
                             </div>
                         </div>
 
@@ -1175,8 +1266,9 @@ Module.register("MMM-LuminaDashboard", {
 
         // Gather all event dates for this month
         const eventDatesMap = {};
-        if (this.agendaState && Array.isArray(this.agendaState)) {
-            this.agendaState.forEach(evt => {
+        const monthEvents = this.getUpcomingEvents();
+        if (monthEvents && Array.isArray(monthEvents)) {
+            monthEvents.forEach(evt => {
                 if (evt.start) {
                     const parts = evt.start.split("-");
                     if (parts.length === 3) {
@@ -1226,8 +1318,8 @@ Module.register("MMM-LuminaDashboard", {
         `;
 
         let monthlyEventsCount = 0;
-        if (this.agendaState && this.agendaState.length > 0) {
-            this.agendaState.forEach(evt => {
+        if (monthEvents && monthEvents.length > 0) {
+            monthEvents.forEach(evt => {
                 let showEv = true;
                 if (evt.start) {
                     const parts = evt.start.split("-");
@@ -1274,7 +1366,7 @@ Module.register("MMM-LuminaDashboard", {
         return container;
     },
 
-    // Builder for SCHEDULE Tab (FullCalendar CDN + Agenda meeting board split view)
+    // Builder for SCHEDULE Tab (Full-Width Clean Timeline & Agenda Board)
     buildScheduleSection: function() {
         const container = document.createElement("div");
         container.className = "workspace-section-container" + (this.activeSectionChanged ? " morph-" + this.transitionDirection : "");
@@ -1283,97 +1375,57 @@ Module.register("MMM-LuminaDashboard", {
         container.style.gap = "20px";
         container.style.height = "100%";
 
-        const self = this;
-
         let agendaListHTML = "";
-        if (this.agendaState && this.agendaState.length > 0) {
-            this.agendaState.forEach(evt => {
+        const scheduleEvents = this.getUpcomingEvents();
+        if (scheduleEvents && scheduleEvents.length > 0) {
+            scheduleEvents.forEach(evt => {
                 const badgeClass = evt.priority === "HIGH" ? "priority-tag-high" : "priority-tag-low";
+                const displayTime = (evt.time && evt.time !== "All Day") ? evt.time : "All Day";
+
                 agendaListHTML += `
-                    <div class="agenda-item-row interactive-row" style="padding: 14px 20px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
-                        <div style="display: flex; align-items: center;">
-                            <span style="font-size: 13px; padding: 4px 10px; background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.25); border-radius: 8px; color: var(--gold-accent); font-weight: 500;">${evt.start}</span>
-                            <div style="margin-left: 18px; display: flex; flex-direction: column; gap: 2px;">
-                                <span style="font-size: 16px; font-weight: 500; color: #fff;">${evt.title}</span>
-                                <span style="font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">${ICONS.LOCATION} ${evt.location}</span>
+                    <div class="agenda-item-row interactive-row" style="padding: 18px 24px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; background: rgba(0, 0, 0, 0.25); border-radius: 16px; border: 1px solid var(--card-glass-border);">
+                        <div style="display: flex; align-items: center; gap: 20px;">
+                            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 95px; padding: 8px 12px; background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.25); border-radius: 12px;">
+                                <span style="font-size: 13px; color: var(--gold-accent); font-weight: 700; font-family: 'Outfit';">${evt.start}</span>
+                                <span style="font-size: 12px; color: #fff; font-weight: 500;">${displayTime}</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 4px;">
+                                <span style="font-size: 18px; font-weight: 600; color: #fff; line-height: 1.3;">${evt.title}</span>
+                                <span style="font-size: 14px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">${ICONS.LOCATION} ${evt.location || 'Virtual Hub'}</span>
                             </div>
                         </div>
-                        <div>
-                            <span class="${badgeClass}" style="font-size: 12px; padding: 3px 10px; border-radius: 8px;">${evt.priority}</span>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span style="font-size: 12px; padding: 4px 12px; background: rgba(255,255,255,0.06); border-radius: 8px; color: var(--text-muted); text-transform: uppercase;">Google Calendar</span>
+                            <span class="${badgeClass}" style="font-size: 12px; padding: 4px 12px; border-radius: 8px;">${evt.priority}</span>
                         </div>
                     </div>
                 `;
             });
         } else {
             agendaListHTML = `
-                <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 140px; opacity: 0.6;">
-                    <span style="font-size: 1.5rem; margin-bottom: 6px;">⏳</span>
-                    <span style="font-size: 14px;">Syncing active meeting board...</span>
+                <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 260px; opacity: 0.6; text-align: center;">
+                    <span style="font-size: 2.5rem; margin-bottom: 12px;">📅</span>
+                    <span style="font-size: 18px; font-family: 'Outfit'; font-weight: 500; color: #fff;">No events scheduled for upcoming days.</span>
+                    <span style="font-size: 14px; color: var(--text-muted); margin-top: 6px;">Connected to Google Calendar feed.</span>
                 </div>`;
         }
 
         container.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <div class="section-title" style="font-size: 1.4rem; letter-spacing: 1px; font-family: 'Outfit'; color: var(--gold-accent); display: flex; align-items: center; gap: 8px;">
-                    ${ICONS.SCHEDULE} SYSTEM SCHEDULE & TIMELINE (FULLCALENDAR CDN)
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div class="section-title" style="font-size: 1.5rem; letter-spacing: 1px; font-family: 'Outfit'; color: var(--gold-accent); display: flex; align-items: center; gap: 10px;">
+                    ${ICONS.SCHEDULE} SYSTEM SCHEDULE & EVENT BOARD
                 </div>
-                <span style="font-size: 0.85rem; padding: 4px 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #fff;">Interactive iCal Sync</span>
+                <span style="font-size: 0.85rem; padding: 4px 14px; background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.25); border-radius: 12px; color: var(--gold-accent);">Live Google iCal Sync</span>
             </div>
             
-            <div style="display: flex; gap: 24px; flex: 1; min-height: 0;">
-                <!-- Left: FullCalendar CDN Interactive Mount -->
-                <div style="flex: 1.4; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--card-glass-border); border-radius: 20px; padding: 18px; display: flex; flex-direction: column; min-height: 400px; overflow: hidden;">
-                    <div id="lumina-fullcalendar-mount" style="flex: 1; height: 100%; color: #fff;"></div>
+            <div style="flex: 1; background: var(--card-glass-bg); border: 1px solid var(--card-glass-border); border-radius: 24px; padding: 24px; display: flex; flex-direction: column; min-height: 0; overflow: hidden;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: #fff; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-family: 'Outfit'; text-transform: uppercase; letter-spacing: 1px;">Upcoming Calendar Events</span>
+                    <span style="font-size: 0.8rem; color: var(--gold-accent); font-weight: 600;">${scheduleEvents ? scheduleEvents.length : 0} EVENTS SYNCED</span>
                 </div>
-
-                <!-- Right: Priority Meeting Board -->
-                <div style="flex: 1; background: var(--card-glass-bg); border: 1px solid var(--card-glass-border); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; min-height: 400px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: #fff; margin-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-                        <span>Priority Meeting Board</span>
-                        <span style="font-size: 0.75rem; color: var(--gold-accent); text-transform: uppercase;">Upcoming</span>
-                    </div>
-                    <div class="agenda-list-wrapper scrollable-container" style="flex: 1; overflow-y: auto;">${agendaListHTML}</div>
-                </div>
+                <div class="agenda-list-wrapper scrollable-container" style="flex: 1; overflow-y: auto;">${agendaListHTML}</div>
             </div>
         `;
-
-        // Mount FullCalendar CDN instance after DOM renders
-        setTimeout(() => {
-            const calendarEl = container.querySelector("#lumina-fullcalendar-mount");
-            if (calendarEl && window.FullCalendar) {
-                try {
-                    const todayStr = new Date().toISOString().split("T")[0];
-                    const defaultEvents = [
-                        { title: "Nepal Tech Advisory Meeting", start: todayStr + "T09:30:00", end: todayStr + "T11:00:00", backgroundColor: "rgba(212,175,55,0.85)", borderColor: "#d4af37" },
-                        { title: "System Architecture Review", start: todayStr + "T13:00:00", end: todayStr + "T14:30:00", backgroundColor: "rgba(59,130,246,0.85)", borderColor: "#3b82f6" },
-                        { title: "Live Vision Pipeline Sync", start: todayStr + "T16:00:00", end: todayStr + "T17:00:00", backgroundColor: "rgba(16,185,129,0.85)", borderColor: "#10b981" }
-                    ];
-
-                    const calendar = new window.FullCalendar.Calendar(calendarEl, {
-                        initialView: "timeGridWeek",
-                        headerToolbar: {
-                            left: "prev,next today",
-                            center: "title",
-                            right: "dayGridMonth,timeGridWeek"
-                        },
-                        events: (self.agendaState && self.agendaState.length > 0) ? self.agendaState.map(evt => ({
-                            title: evt.title,
-                            start: evt.start,
-                            backgroundColor: evt.priority === "HIGH" ? "rgba(239,68,68,0.85)" : "rgba(212,175,55,0.85)",
-                            borderColor: evt.priority === "HIGH" ? "#ef4444" : "#d4af37"
-                        })) : defaultEvents,
-                        height: "100%",
-                        slotMinTime: "07:00:00",
-                        slotMaxTime: "22:00:00",
-                        expandRows: true,
-                        nowIndicator: true
-                    });
-                    calendar.render();
-                } catch(e) {
-                    console.error("[FULLCALENDAR CDN ERROR]", e);
-                }
-            }
-        }, 150);
 
         return container;
     },
@@ -1555,25 +1607,32 @@ Module.register("MMM-LuminaDashboard", {
         return container;
     },
 
-    // Builder for NEWS Tab
+    // Builder for NEWS Tab (Nepali & Global News Stream)
     buildNewsSection: function() {
+        if (!this.lastNewsFetch || (Date.now() - this.lastNewsFetch > 10000)) {
+            this.fetchLiveNews();
+        }
         const container = document.createElement("div");
         container.className = "workspace-section-container" + (this.activeSectionChanged ? " morph-" + this.transitionDirection : "");
 
         let newsHTML = "";
         if (this.newsState && this.newsState.length > 0) {
             this.newsState.forEach((item, index) => {
+                const sourceBadge = item.source ? item.source : "Nepali News";
+                const categoryBadge = item.category ? item.category : "Nepal";
+
                 newsHTML += `
-                    <div class="news-feed-card interactive-row" style="padding: 20px 24px; margin-bottom: 12px;">
-                        <div style="display:flex; gap: 12px; align-items:center;">
-                            <span class="news-item-index" style="font-size: 16px; color: var(--gold-accent); font-weight: 500;">[${index + 1}]</span>
-                            <span style="font-size: 18px; font-weight: 500; color: #fff;">${item.title}</span>
+                    <div class="news-feed-card interactive-row" style="padding: 20px 24px; margin-bottom: 14px; background: rgba(0,0,0,0.25); border: 1px solid var(--card-glass-border); border-radius: 18px;">
+                        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="display:flex; gap: 8px; align-items:center;">
+                                <span class="news-item-index" style="font-size: 14px; color: var(--gold-accent); font-weight: 600; font-family: 'Outfit';">[${index + 1}]</span>
+                                <span style="font-size: 12px; background: rgba(212,175,55,0.12); border: 1px solid rgba(212,175,55,0.3); color: var(--gold-accent); padding: 2px 10px; border-radius: 12px; font-weight: 600; text-transform: uppercase;">${sourceBadge}</span>
+                                <span style="font-size: 12px; background: rgba(255,255,255,0.06); color: var(--text-muted); padding: 2px 8px; border-radius: 10px;">${categoryBadge}</span>
+                            </div>
+                            <span style="font-size: 13px; color: var(--text-muted);">${item.pubDate || 'Recently'}</span>
                         </div>
-                        <div style="font-size: 16px; margin-top: 10px; line-height: 1.5; color:var(--text-muted);">${item.description}</div>
-                        <div style="font-size: 14px; margin-top: 14px; display:flex; justify-content:space-between; color:var(--text-muted);">
-                            <span>GOOGLE NEWS NEPAL</span>
-                            <span>${item.pubDate}</span>
-                        </div>
+                        <div style="font-size: 18px; font-weight: 600; color: #fff; line-height: 1.35; margin-bottom: 8px;">${item.title}</div>
+                        <div style="font-size: 15px; line-height: 1.5; color: var(--text-muted);">${item.description}</div>
                     </div>
                 `;
             });
@@ -1581,12 +1640,17 @@ Module.register("MMM-LuminaDashboard", {
             newsHTML = `
                 <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 200px; opacity: 0.5;">
                     <span style="font-size: 2rem; margin-bottom: 12px;">📰</span>
-                    <span style="font-size: 16px;">Indexing live news feeds...</span>
+                    <span style="font-size: 16px;">Indexing live Nepali news feeds...</span>
                 </div>`;
         }
 
         container.innerHTML = `
-            <div class="section-title" style="font-size: 1.5rem; margin-bottom: 24px; letter-spacing: 1px; font-family: 'Outfit'; color: var(--gold-accent);">${ICONS.NEWS} LIVE NEWS HEADLINES</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div class="section-title" style="font-size: 1.5rem; letter-spacing: 1px; font-family: 'Outfit'; color: var(--gold-accent); display: flex; align-items: center; gap: 10px;">
+                    ${ICONS.NEWS} LIVE NEPALI NEWS & RSS STREAM
+                </div>
+                <span style="font-size: 0.85rem; padding: 4px 12px; background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.25); border-radius: 12px; color: var(--gold-accent);">Live Feeds (OnlineKhabar, Setopati, Google News)</span>
+            </div>
             <div class="news-list-wrapper scrollable-container">${newsHTML}</div>
         `;
         return container;
