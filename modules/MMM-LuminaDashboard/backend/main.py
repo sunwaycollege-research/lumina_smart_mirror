@@ -22,6 +22,8 @@ import database_core
 from vision_pipeline import LuminaVisionPipeline
 from calendar_engine import AsyncCalendarEngine
 from config_loader import load_config
+from schedule_manager import ScheduleManager
+from text_logger import TextLogger
 import httpx
 from logger import get_logger
 
@@ -105,7 +107,7 @@ def get_registration_page():
             text-transform: uppercase;
             font-weight: 600;
         }
-        input {
+        input, select {
             width: 100%;
             padding: 14px 18px;
             box-sizing: border-box;
@@ -116,10 +118,14 @@ def get_registration_page():
             font-size: 0.95rem;
             transition: all 0.3s ease;
         }
-        input:focus {
+        input:focus, select:focus {
             outline: none;
             border-color: #d4af37;
             box-shadow: 0 0 10px rgba(212, 175, 55, 0.15);
+        }
+        select option {
+            background: #0c0e12;
+            color: #ffffff;
         }
         button {
             width: 100%;
@@ -203,7 +209,16 @@ def get_registration_page():
             </div>
             <div class="input-group">
                 <label for="role">Role</label>
-                <input type="text" id="role" placeholder="e.g. Developer" required autocomplete="off">
+                <input type="text" id="role" placeholder="e.g. Student" required autocomplete="off">
+            </div>
+            <div class="input-group">
+                <label for="semester_section">Semester Class Section</label>
+                <select id="semester_section" required>
+                    <option value="l1">L1 (Level 1 / Semester 1-2)</option>
+                    <option value="l2">L2 (Level 2 / Semester 3-4)</option>
+                    <option value="l3">L3 (Level 3 / Semester 5-6)</option>
+                    <option value="l4">L4 (Level 4 / Semester 7-8)</option>
+                </select>
             </div>
             <div class="input-group">
                 <label for="welcome_message">Custom Welcome Message</label>
@@ -232,6 +247,7 @@ def get_registration_page():
             const username = document.getElementById('username').value.trim();
             const display_name = document.getElementById('display_name').value.trim();
             const role = document.getElementById('role').value.trim();
+            const semester_section = document.getElementById('semester_section').value;
             const welcome_message = document.getElementById('welcome_message').value.trim();
             
             submitBtn.disabled = true;
@@ -248,6 +264,7 @@ def get_registration_page():
                         username,
                         display_name,
                         role,
+                        semester_section,
                         welcome_message,
                         theme: 'gold'
                     })
@@ -331,6 +348,12 @@ face_recognizer = FaceRecognizer(encodings_json)
 profiles_json = os.path.join(project_root, "services", "face-recognition", "profiles", "users.json")
 profile_manager = ProfileManager(profiles_json)
 
+schedules_json = os.path.join(project_root, "services", "schedules.json")
+schedule_manager = ScheduleManager(schedules_json)
+
+activity_log_txt = os.path.join(backend_dir, "logs", "activity_logs.txt")
+text_logger = TextLogger(activity_log_txt)
+
 gesture_handler = MediapipeHandler()
 gesture_handler.init_landmarker()
 gesture_detector = GestureDetector(
@@ -353,6 +376,7 @@ class RegisterRequest(BaseModel):
     display_name: str
     role: str
     welcome_message: str
+    semester_section: str = "l1"
     theme: str = "dark"
 
 registration_state = {
@@ -360,6 +384,7 @@ registration_state = {
     "username": "",
     "display_name": "",
     "role": "",
+    "semester_section": "l1",
     "theme": "",
     "welcome_message": "",
     "samples_captured": 0,
@@ -569,6 +594,43 @@ async def get_dashboard_news():
     """Fetches the configured single news RSS feed and parses headlines to JSON."""
     return await get_nepali_news()
 
+class LogActivityRequest(BaseModel):
+    user: str = "Unknown"
+    feature: str
+    details: str = ""
+    mood: str = ""
+    happiness_score: float = 0.0
+
+class GeneralScheduleUpdateRequest(BaseModel):
+    schedule: list
+
+@app.get("/api/schedules/{username}")
+async def get_student_schedule(username: str):
+    """Returns the class schedule for a designated student from schedules.json."""
+    prof = profile_manager.get_active_profile(username) if username not in ["Unknown", "Guest"] else None
+    user_sec = prof.get("semester_section") if prof else None
+    return schedule_manager.get_schedule_for_student(username, user_section=user_sec)
+
+@app.post("/api/schedules/general")
+async def update_general_schedule_endpoint(req: GeneralScheduleUpdateRequest):
+    """Updates the master schedule for all students in schedules.json."""
+    success = schedule_manager.update_general_schedule(req.schedule)
+    if success:
+        return {"status": "success", "message": "General schedule updated for all students."}
+    return {"status": "error", "message": "Failed to update general schedule."}
+
+@app.post("/api/logs/record")
+async def record_activity_log(req: LogActivityRequest):
+    """Appends an activity/feature usage log entry into logs/activity_logs.txt for registered students."""
+    text_logger.log_feature_usage(
+        username=req.user,
+        new_feature=req.feature,
+        mood=req.mood,
+        happiness_score=req.happiness_score,
+        details=req.details
+    )
+    return {"status": "success", "logged_feature": req.feature}
+
 @app.post("/api/register/start")
 def start_registration(req: RegisterRequest):
     """Triggers registration mode. WebCam stream will begin capturing 5 samples."""
@@ -577,6 +639,7 @@ def start_registration(req: RegisterRequest):
         "username": req.username,
         "display_name": req.display_name,
         "role": req.role,
+        "semester_section": req.semester_section,
         "theme": req.theme,
         "welcome_message": req.welcome_message,
         "samples_captured": 0,
@@ -778,7 +841,8 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                                                 name=registration_state["display_name"],
                                                 theme=registration_state["theme"],
                                                 role=registration_state["role"],
-                                                welcome_message=registration_state["welcome_message"]
+                                                welcome_message=registration_state["welcome_message"],
+                                                semester_section=registration_state.get("semester_section", "l1")
                                             )
                                             
                                             registration_state["active"] = False
@@ -831,9 +895,23 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                                 if recognition_streak >= required_streak:
                                     if recognized_user != detected_user:
                                         logger.info(f"WebSocket User login transition: '{recognized_user}' -> '{detected_user}'")
+                                        prev_user = recognized_user
                                         recognized_user = detected_user
                                         prof = await asyncio.to_thread(profile_manager.get_active_profile, recognized_user)
                                         current_user_name = prof.get("name", recognized_user)
+                                        trigger_schedule_popup = True
+                                        
+                                        # End session for previous student if any
+                                        if prev_user and prev_user not in ["Unknown", "Guest"]:
+                                            text_logger.end_student_session(prev_user)
+
+                                        # Start student session (logs login timestamp & initial Class Schedule popup)
+                                        text_logger.start_student_session(
+                                            username=recognized_user,
+                                            initial_feature="Class Schedules (Auto Popup)",
+                                            mood=vision_data.get("mood", "NEUTRAL"),
+                                            happiness_score=vision_data.get("happiness_score", 50.0)
+                                        )
                                         
                                         # Keep custom face_data.json updated for compatibility
                                         try:
@@ -848,7 +926,7 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                                     last_candidate = None
                                     
                             elif detected_user == "Guest":
-                                # Face detected but unrecognized
+                                # Face detected but unrecognized guest -> ignore text logging for guests
                                 recognition_streak = 0
                                 last_candidate = None
                                 
@@ -865,7 +943,6 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                                         except Exception:
                                             pass
                                     identity_confidence = 0
-                                # If we are already logged in as a known user, we keep that user active while a face is present.
                                 
                             else:  # detected_user == "Unknown" (no face detected at all)
                                 recognition_streak = 0
@@ -876,6 +953,8 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                                     logger.info(f"Face absent. Miss count: {miss_count}/{max_misses}")
                                     if miss_count >= max_misses:
                                         logger.info(f"WebSocket User logged out due to absence: '{recognized_user}' -> 'Unknown'")
+                                        # End session for registered student
+                                        text_logger.end_student_session(recognized_user)
                                         recognized_user = "Unknown"
                                         current_user_name = "Searching..."
                                         try:
@@ -906,27 +985,21 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                 system_health["last_processed_fps"] = round(fps_frames / elapsed_fps, 1)
                 fps_frames = 0
                 fps_start_time = now_time
-                
-            # Periodically write data entries to disk to protect storage longevity
-            if vision_data["detected"] and ticker_counter % 60 == 0:
-                if isinstance(vision_data["bpm"], (int, float)) and recognized_user not in ["Unknown", "Guest"]:
+
+            # Periodically write happiness and mood metrics to disk
+            if vision_data.get("detected") and ticker_counter % 60 == 0:
+                if recognized_user not in ["Unknown", "Guest"]:
                     await asyncio.to_thread(
                         database_core.log_health_metrics,
                         recognized_user,
-                        vision_data["bpm"],
-                        vision_data["mood"],
-                        vision_data["anxiety"]
+                        vision_data.get("happiness_score", 50.0),
+                        vision_data.get("mood", "NEUTRAL"),
+                        "LOW"
                     )
-            
-            # Every 150 frames, asynchronously update calendar events
-            if ticker_counter % 150 == 0 or 'cached_agenda_data' not in locals():
-                fetched_agenda = await cal_engine.fetch_and_parse_agenda()
-                if fetched_agenda:
-                    cached_agenda_data = fetched_agenda
-                elif 'cached_agenda_data' not in locals():
-                    cached_agenda_data = []
 
             active_profile = await asyncio.to_thread(profile_manager.get_active_profile, recognized_user) if recognized_user not in ["Unknown", "Guest"] else None
+            student_schedule_data = schedule_manager.get_schedule_for_student(recognized_user)
+            
             identity_payload = {
                 "currentUser": current_user_name,
                 "currentUserKey": recognized_user if recognized_user not in ["Unknown", "Guest"] else "",
@@ -935,9 +1008,15 @@ async def primary_dashboard_websocket_stream(websocket: WebSocket):
                 "welcomeMessage": active_profile.get("welcome_message", "") if active_profile else ""
             }
             
+            has_popup_trigger = False
+            if 'trigger_schedule_popup' in locals() and trigger_schedule_popup:
+                has_popup_trigger = True
+                trigger_schedule_popup = False
+            
             outbound_packet = {
                 "biometrics": vision_data,
-                "agenda": cached_agenda_data,
+                "student_schedule": student_schedule_data,
+                "trigger_schedule_popup": has_popup_trigger,
                 "gestures": {
                     "activeGesture": active_gesture,
                     "verifyingGesture": verifying_gesture if 'verifying_gesture' in locals() else "NONE",

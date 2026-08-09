@@ -1,14 +1,9 @@
 {
-	"Utkrista": {
-		"name": "Utkrista",
-		"theme": "dark",
-		"role": "Student",
-		"welcomeMessage": "Welcome back Utkrista"
-	},
 	"Sulav": {
-		"name": "Sulav Nepal",
+		"name": "Sulav",
 		"theme": "dark",
 		"role": "Student",
-		"welcomeMessage": "Ola Sulav!"
+		"welcomeMessage": "Welcome to class!",
+		"semester_section": "Grade 12-A"
 	}
 }

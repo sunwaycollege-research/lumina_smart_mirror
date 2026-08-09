@@ -71,7 +71,7 @@ class ProfileManager:
             logger.error(f"Failed to save profiles to {self.profiles_path}: {e}")
             return False
 
-    def create_profile(self, username: str, name: str, theme: str = "dark", role: str = "User", welcome_message: Optional[str] = None) -> Dict[str, Any]:
+    def create_profile(self, username: str, name: str, theme: str = "dark", role: str = "User", welcome_message: Optional[str] = None, semester_section: str = "l1") -> Dict[str, Any]:
         """
         Creates a new user profile or updates an existing one, and saves it.
         
@@ -81,6 +81,7 @@ class ProfileManager:
             theme (str): Visual theme ("dark" or "light").
             role (str): Role of the user (e.g., "Student", "Admin").
             welcome_message (str, optional): Custom welcome greeting.
+            semester_section (str): Semester class section ("l1", "l2", "l3", "l4").
             
         Returns:
             Dict[str, Any]: The newly created profile dictionary.
@@ -92,11 +93,12 @@ class ProfileManager:
             "name": name,
             "theme": theme,
             "role": role,
-            "welcomeMessage": welcome_message
+            "welcomeMessage": welcome_message,
+            "semester_section": semester_section
         }
         
         self.save_profile()
-        logger.info(f"Created/updated profile for user: '{username}'")
+        logger.info(f"Created/updated profile for user: '{username}' with section '{semester_section}'")
         return self.profiles[username]
 
     def get_active_profile(self, username: str) -> Dict[str, Any]:

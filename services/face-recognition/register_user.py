@@ -73,6 +73,24 @@ def register_user(username: str) -> None:
     print("\n--- Enter Profile Information ---")
     display_name = input(f"Display Name [{username}]: ").strip() or username
     role = input("User Role (e.g. Student, Professor, Guest) [Student]: ").strip() or "Student"
+    
+    print("\nSelect Semester Class Section:")
+    print("  1) l1 (Level 1 / Semester 1-2)")
+    print("  2) l2 (Level 2 / Semester 3-4)")
+    print("  3) l3 (Level 3 / Semester 5-6)")
+    print("  4) l4 (Level 4 / Semester 7-8)")
+    sec_input = input("Choose section (l1/l2/l3/l4) [l1]: ").strip().lower() or "l1"
+    if sec_input in ["1", "l1"]:
+        semester_section = "l1"
+    elif sec_input in ["2", "l2"]:
+        semester_section = "l2"
+    elif sec_input in ["3", "l3"]:
+        semester_section = "l3"
+    elif sec_input in ["4", "l4"]:
+        semester_section = "l4"
+    else:
+        semester_section = "l1"
+
     theme = input("Preferred UI Theme (dark/light) [dark]: ").strip().lower() or "dark"
     if theme not in ["dark", "light"]:
         theme = "dark"
@@ -196,7 +214,8 @@ def register_user(username: str) -> None:
             name=display_name,
             theme=theme,
             role=role,
-            welcome_message=welcome_message
+            welcome_message=welcome_message,
+            semester_section=semester_section
         )
         print(f"\n[SUCCESS] User '{username}' successfully registered and profile created!")
     else:

@@ -1,0 +1,194 @@
+{
+	"activeGroup": "L3",
+	"default_schedule": {
+		"student_id": "L3-GENERAL",
+		"student_name": "General Master Schedule (Section L3)",
+		"program": "BSc (Hons) Computer Science",
+		"section": "L3",
+		"schedule": [
+			{
+				"day": "Monday",
+				"time": "08:00 - 10:00 AM",
+				"subject": "MERN Stack",
+				"room": "Computer Lab 1",
+				"instructor": "Faculty Instructor",
+				"status": "SCHEDULED"
+			},
+			{
+				"day": "Monday",
+				"time": "10:30 - 12:30 PM",
+				"subject": "Innovation Fest Preparation",
+				"room": "Innovation Hub",
+				"instructor": "Project Mentor",
+				"status": "SCHEDULED"
+			},
+			{
+				"day": "Wednesday",
+				"time": "08:30 - 10:30 AM",
+				"subject": "MERN Stack Workshop",
+				"room": "Computer Lab 1",
+				"instructor": "Faculty Instructor",
+				"status": "SCHEDULED"
+			},
+			{
+				"day": "Thursday",
+				"time": "08:00 - 10:00 AM",
+				"subject": "Innovation Fest Preparation",
+				"room": "Innovation Hub",
+				"instructor": "Project Mentor",
+				"status": "SCHEDULED"
+			}
+		]
+	},
+	"sections": {
+		"L3": {
+			"program": "BSc (Hons) Computer Science",
+			"section": "L3",
+			"schedule": [
+				{
+					"day": "Monday",
+					"time": "08:00 - 10:00 AM",
+					"subject": "MERN Stack",
+					"room": "Computer Lab 1",
+					"instructor": "Faculty Instructor",
+					"status": "SCHEDULED"
+				},
+				{
+					"day": "Monday",
+					"time": "10:30 - 12:30 PM",
+					"subject": "Innovation Fest Preparation",
+					"room": "Innovation Hub",
+					"instructor": "Project Mentor",
+					"status": "SCHEDULED"
+				},
+				{
+					"day": "Wednesday",
+					"time": "08:30 - 10:30 AM",
+					"subject": "MERN Stack Workshop",
+					"room": "Computer Lab 1",
+					"instructor": "Faculty Instructor",
+					"status": "SCHEDULED"
+				},
+				{
+					"day": "Thursday",
+					"time": "08:00 - 10:00 AM",
+					"subject": "Innovation Fest Preparation",
+					"room": "Innovation Hub",
+					"instructor": "Project Mentor",
+					"status": "SCHEDULED"
+				}
+			]
+		}
+	},
+	"students": {
+		"Sulav": {
+			"student_id": "HS-2024-012",
+			"student_name": "Sulav Shrestha",
+			"program": "BSc (Hons) Computer Science",
+			"section": "L3",
+			"schedule": [
+				{
+					"day": "Monday",
+					"time": "08:00 - 10:00 AM",
+					"subject": "MERN Stack",
+					"room": "Computer Lab 1",
+					"instructor": "Faculty Instructor",
+					"status": "UPCOMING"
+				},
+				{
+					"day": "Monday",
+					"time": "10:30 - 12:30 PM",
+					"subject": "Innovation Fest Preparation",
+					"room": "Innovation Hub",
+					"instructor": "Project Mentor",
+					"status": "UPCOMING"
+				},
+				{
+					"day": "Wednesday",
+					"time": "08:30 - 10:30 AM",
+					"subject": "MERN Stack Workshop",
+					"room": "Computer Lab 1",
+					"instructor": "Faculty Instructor",
+					"status": "SCHEDULED"
+				},
+				{
+					"day": "Thursday",
+					"time": "08:00 - 10:00 AM",
+					"subject": "Innovation Fest Preparation",
+					"room": "Innovation Hub",
+					"instructor": "Project Mentor",
+					"status": "SCHEDULED"
+				}
+			]
+		},
+		"Utkrista": {
+			"student_id": "HS-2024-015",
+			"student_name": "Utkrista",
+			"program": "BSc (Hons) Computer Science",
+			"section": "L3",
+			"schedule": [
+				{
+					"day": "Monday",
+					"time": "08:00 - 10:00 AM",
+					"subject": "MERN Stack",
+					"room": "Computer Lab 1",
+					"instructor": "Faculty Instructor",
+					"status": "UPCOMING"
+				},
+				{
+					"day": "Monday",
+					"time": "10:30 - 12:30 PM",
+					"subject": "Innovation Fest Preparation",
+					"room": "Innovation Hub",
+					"instructor": "Project Mentor",
+					"status": "UPCOMING"
+				},
+				{
+					"day": "Wednesday",
+					"time": "08:30 - 10:30 AM",
+					"subject": "MERN Stack Workshop",
+					"room": "Computer Lab 1",
+					"instructor": "Faculty Instructor",
+					"status": "SCHEDULED"
+				},
+				{
+					"day": "Thursday",
+					"time": "08:00 - 10:00 AM",
+					"subject": "Innovation Fest Preparation",
+					"room": "Innovation Hub",
+					"instructor": "Project Mentor",
+					"status": "SCHEDULED"
+				}
+			]
+		}
+	},
+	"school_notices": [
+		{
+			"id": "NOT-001",
+			"tag": "IMPORTANT",
+			"title": "Annual Science & Robotics Exhibition 2026",
+			"date": "Aug 15, 2026",
+			"category": "Academic",
+			"content": "All Section L3 students must submit project abstracts by Friday. Main hall presentation begins at 10:00 AM.",
+			"priority": "HIGH"
+		},
+		{
+			"id": "NOT-002",
+			"tag": "WORKSHOP",
+			"title": "MERN Stack & Innovation Fest Hackathon",
+			"date": "Aug 10, 2026",
+			"category": "Technology",
+			"content": "Hands-on MERN stack sessions and Innovation Fest prep check for Section L3.",
+			"priority": "MEDIUM"
+		},
+		{
+			"id": "NOT-003",
+			"tag": "ADMIN",
+			"title": "Parent-Teacher Conference (PTC) Scheduled",
+			"date": "Aug 20, 2026",
+			"category": "Administration",
+			"content": "Term-1 progress reports will be distributed. Meetings run from 9:00 AM to 2:00 PM in respective homerooms.",
+			"priority": "HIGH"
+		}
+	]
+}
